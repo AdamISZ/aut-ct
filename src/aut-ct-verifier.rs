@@ -4,9 +4,9 @@ extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
 
-use ownerproofs::utils::*;
+use autct::utils::*;
 
-use ownerproofs::peddleq::PedDleqProof;
+use autct::peddleq::PedDleqProof;
 use bulletproofs::r1cs::R1CSProof;
 use bulletproofs::r1cs::Verifier;
 use alloc::vec::Vec;
