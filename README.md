@@ -1,7 +1,7 @@
-Anonymous usage tokens from curve trees
+Anonymous usage tokens from curve trees (WIP)
 =====
 
-(Caveat: read the section "Caveat", please)
+(Caveat: read the section "Caveat", please. Also, this is not quite finished, hence "WIP", see details at the end.)
 
 Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short (sub second at least) so that it can be used practically in real systems.
 
@@ -98,6 +98,9 @@ Additionally the depth and branching factors of the Curve Tree are still hard co
 
 Yes, this is all laughably primitive for now.
 
+TODO
+===
 
+There are at least two changes needed still: 1/ the Pedersen commitment `D` used in the Pedersen-DLEQ proof refers to one specific key, whose index is not yet specified as an argument to the proving program. Moreover, and more importantly, 2/ the Pedersen commitment `D` uses randomness which is not related to the Curve Tree's rerandomized key. Thus we need to modify the curve tree construction code itself, to allow inserting this value into the creation of the proof.
 
 
