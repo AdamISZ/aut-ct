@@ -65,6 +65,7 @@ Running
 
 You need to edit the Cargo.toml of the `curve-trees` repo (so `cd ..` to go up one level from `autct`). Add `autct` to the list of `members`, and add a section for `workspace.package`, as below:
 
+```
 [workspace]
 members = [
     "bulletproofs",
@@ -75,6 +76,7 @@ members = [
 [workspace.package]
 name = "curve_trees"
 version = "0.1.0"
+```
 
 Then, build the project with `cargo build --release` (without release flag, the debug version is very slow), then the binaries are in `curve-trees/target/release`. They are called `autct` for the prover and `autct-verifier` for the verifier. Examples:
 
