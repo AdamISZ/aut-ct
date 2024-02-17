@@ -90,6 +90,10 @@ The prover provides a hex-encoded 32 byte string, as private key, as first argum
 
 The verifier must also be provided the same pubkey text file, and checks the content of `proof.txt` and outputs the key image if it verifies (actually, it just panics and crashes if it doesn't :laughing: ). The idea is that if a person tries to reuse their key, it will "verify" but you can reject it if it has the same key image as a previous run.
 
+In the directory `testdata` there is an example pubkey file containing approximately 48000 pubkeys taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like.
+
+Additionally the depth and branching factors of the Curve Tree are still hard coded (2, 256 respectively); obviously this can be mode configurable.
+
 Yes, this is all laughably primitive for now.
 
 
