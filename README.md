@@ -1,2 +1,84 @@
-# aut-ct
-Documentation: anonymous usage tokens from curve trees
+Anonymous usage tokens from curve trees
+=====
+
+(Caveat: read the section "Caveat", please)
+
+Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short (sub second at least) so that it can be used practically in real systems.
+
+More specifically, we imagine these public keys to be those of Bitcoin utxos (or perhaps just txos).
+
+The basis of this is [Curve Trees](https://eprint.iacr.org/2022/756), implemented [here](https://github.com/simonkamp/curve-trees/tree/main). That construction allows one to prove set membership in zero knowledge, with pretty good computation and verification complexity, by essentially using an algebraic version of a Merkle tree, and using bulletproofs to get a ZKP of the validity of the "Merkle" proof.
+
+Specifically, it can be made to work for Bitcoin public keys because of the existence of the 2-cycle of curves secp256k1 and secq256k1; we need such a 2-cycle to implement a Curve Tree construct (technically it works with a bigger cycle but the 2-cycle is optimal, since multiple bulletproofs over the same base curve can be aggregated).
+
+That construction is not quite enough for usage of ownership of public keys as tokens; for that, there needs to be a mechanism to ensure no "double spend" of tokens. This line of thinking tends to lead to a "zerocoin" type of construction, and indeed the above paper introduces "Vcash" as doing exactly that. But this requires a globally synchronised accumulator to record (in a ZK way) the spending of each coin/commitment. Without such a "virtual ledger", the other way you could record "usage" of a key in the set is with a key image, a la Cryptonote/Monero ring signatures. This allows more localized and "loosely-coupled" verification of no-double-spend, depending on thie use case.
+
+This "key image" approach can be implemented as described here in this repo, in [this document](./autct.pdf). It's a simple additional ZK proof of knowledge of the opening of a Pedersen commitment, tied to a key image, using completely standard Sigma protocol techniques.
+
+Caveat
+==
+
+**Everything here is completely experimental and not safe in any way** (not helped by the fact I am a neophyte in Rust!). Importantly, even the underlying Curve Trees code was *only* written as a benchmarking tool, and therefore even that is not safe to use in anything remotely resembling a production environment.
+
+If you choose to play around with this stuff for Bitcoin projects I suggest using signet for now.
+
+Installation
+==
+
+Install curve trees, then install this project inside it:
+
+```
+git clone https://github.com/simonkamp/curve-trees
+cd curve trees
+git clone https://github.com/AdamISZ/aut-ct
+```
+
+Temporary:
+For now I need to patch the universal hash construction so it can be recreated by more than one participant (the idea is that the base tree is transparently constructible by all parties, from the same set of bitcoin/utxo pubkeys; but the ZK proof construction requires that the tiebreaker for the y-coord of a compressed EC point take a certain algebraic form (this is called in the paper, and code, "permissible points"), and *this* requires passing through a "universal hash function" which in the code is just constructed from random inputs; the following patch forces those vars to be a fixed value, so they're the same between both parties. I'm not 100% sure what the right solution is, but this is just a "for now, to make it work":
+
+```
+diff --git a/relations/src/permissible.rs b/relations/src/permissible.rs
+index 032d0ad..e1d0eb5 100644
+--- a/relations/src/permissible.rs
++++ b/relations/src/permissible.rs
+@@ -18,8 +18,14 @@ pub struct UniversalHash<F: Field> {
+ impl<F: Field> UniversalHash<F> {
+     pub fn new<R: Rng>(rng: &mut R, a: F, b: F) -> Self {
+         Self {
+-            alpha: F::rand(rng),
+-            beta: F::rand(rng),
++            // Doctoring this to just use a fixed value for now,
++            // instead of the rng; TODO we want deterministic
++            // random values for both prover and verifier
++            // to come up with the same SRParams values:
++            alpha: F::try_from(42u64).unwrap(),
++            beta: F::try_from(690u64).unwrap(),
++            //alpha: F::rand(rng),
++            //beta: F::rand(rng),
+             a,
+             b,
+         }
+```
+
+Running
+===
+
+Build with `cargo build --release` (without release flag, the debug version is very slow), then the binaries are in `./target/release`. They are called `autct` for the prover and `autct-verifier` for the verifier. Examples:
+
+```
+./autct 37......cf somepubkeys.txt
+```
+
+The prover provides a hex-encoded 32 byte string, as private key, as first argument, then a plaintext file with a list of pubkeys, compressed, hex encoded, separated by whitespace, all on one line. The output is `proof.txt`, which should usually be around 2-3kB.
+
+```
+./autctverify somepubkeys.txt
+```
+
+The verifier must also be provided the same pubkey text file, and checks the content of `proof.txt` and outputs the key image if it verifies (actually, it just panics and crashes if it doesn't :laughing: ). The idea is that if a person tries to reuse their key, it will "verify" but you can reject it if it has the same key image as a previous run.
+
+Yes, this is all laughably primitive for now.
+
+
+
+
