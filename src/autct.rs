@@ -93,6 +93,9 @@ pub fn get_curve_tree_with_proof<
     assert_eq!(curve_tree.height(), depth);
 
     let (path_commitments, _) = curve_tree.select_and_rerandomize_prover_gadget(
+        // TODO: index: choose the index of the key we chose in the previous step, not 0
+        // TODO: need to ensure the randomness of the commitment at that index, equals the
+        // r value that we used in the ped-dleq proof
         0,
         &mut p0_prover,
         &mut p1_prover,
@@ -126,7 +129,14 @@ pub fn main(){
     // next steps create the Pedersen DLEQ proof for this key:
     //
     // blinding factor for Pedersen
+    // TODO: this isn't yet correct; we need to use the same randomness
+    // as is used in the re-randomization code in the curve tree proof construction.
+    // The right way to do this is to take the return value of
+    // `select_and_rerandomize_prover_gadget` which outputs the randomization that was
+    // applied to the selected leaf, and re-use that in the Pedersen DLEQ proof
+    // (and we of course also need to reuse the same blinding generator base).
     let r = F::rand(&mut rng);
+    // see above re: the generator H, here:
     let (G, H, J) = get_generators::<SecpBase, SecpConfig>();
     let P = G.mul(x).into_affine();
     // TODO print out P as a sanity check.
