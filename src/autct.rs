@@ -62,6 +62,7 @@ pub fn get_curve_tree_with_proof<
     depth: usize,
     generators_length_log_2: usize,
     pubkey_file_path: &str,
+    key_index: usize,
 ) -> (R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>, SelectAndRerandomizePath<L, P0, P1>) {
     let mut rng = rand::thread_rng();
     let generators_length = 1 << generators_length_log_2;
@@ -96,7 +97,7 @@ pub fn get_curve_tree_with_proof<
         // TODO: index: choose the index of the key we chose in the previous step, not 0
         // TODO: need to ensure the randomness of the commitment at that index, equals the
         // r value that we used in the ped-dleq proof
-        0,
+        key_index,
         &mut p0_prover,
         &mut p1_prover,
         &sr_params,
@@ -120,6 +121,8 @@ pub fn main(){
     let mut rng = rand::thread_rng();
     // read privkey from command line (TODO, use a file)
     let privhex = &args[1];
+    let keyindex: usize = args[2].parse().unwrap();
+    println!("Got key index: {}", keyindex);
     let testprivhex = &hex::decode(privhex).unwrap();
     let mut cursor = Cursor::new(&testprivhex);
     // TODO check: is it the case that this x value
@@ -181,7 +184,7 @@ pub fn main(){
     let (p0proof,
         p1proof,
         path) = get_curve_tree_with_proof::<256, SecpBase, SecpConfig, SecqConfig>(
-            2, 11, filepath);
+            2, 11, filepath, keyindex);
     //println!("P0proof is: {:#?}", p0proof);
     //println!("P1proof is: {:#?}", p1proof);
     let total_size =
