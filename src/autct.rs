@@ -14,7 +14,6 @@ use ark_ec::{AffineRepr, short_weierstrass::SWCurveConfig, CurveGroup, VariableB
 use ark_ff::PrimeField;
 use ark_serialize::{
     CanonicalSerialize, CanonicalDeserialize, Compress};
-use ark_std::UniformRand;
 use relations::curve_tree::{SelRerandParameters, CurveTree, SelectAndRerandomizePath};
 use std::env;
 use std::io::Cursor;
@@ -63,7 +62,10 @@ pub fn get_curve_tree_with_proof<
     generators_length_log_2: usize,
     pubkey_file_path: &str,
     key_index: usize,
-) -> (R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>, SelectAndRerandomizePath<L, P0, P1>) {
+) -> (R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>,
+    SelectAndRerandomizePath<L, P0, P1>,
+    P0::ScalarField,
+    Affine<P0>) {
     let mut rng = rand::thread_rng();
     let generators_length = 1 << generators_length_log_2;
 
@@ -93,24 +95,24 @@ pub fn get_curve_tree_with_proof<
         &permissible_points, &sr_params, Some(depth));
     assert_eq!(curve_tree.height(), depth);
 
-    let (path_commitments, _) = curve_tree.select_and_rerandomize_prover_gadget(
-        // TODO: index: choose the index of the key we chose in the previous step, not 0
-        // TODO: need to ensure the randomness of the commitment at that index, equals the
-        // r value that we used in the ped-dleq proof
+    let (path_commitments, rand_scalar) =
+    curve_tree.select_and_rerandomize_prover_gadget(
         key_index,
         &mut p0_prover,
         &mut p1_prover,
         &sr_params,
         &mut rng,
     );
-
+    // as well as the randomness in the blinded commitment, we also need to use the same
+    // blinding base:
+    let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
     let p0_proof = p0_prover
         .prove(&sr_params.even_parameters.bp_gens)
         .unwrap();
     let p1_proof = p1_prover
         .prove(&sr_params.odd_parameters.bp_gens)
         .unwrap();
-    (p0_proof, p1_proof, path_commitments)
+    (p0_proof, p1_proof, path_commitments, rand_scalar, b_blinding)
 }
 
 pub fn main(){
@@ -118,10 +120,9 @@ pub fn main(){
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     let args: Vec<String> = env::args().collect();
     println!("Here is args: {}, {}", args[0], args[1]);
-    let mut rng = rand::thread_rng();
     // read privkey from command line (TODO, use a file)
     let privhex = &args[1];
-    let keyindex: usize = args[2].parse().unwrap();
+    let keyindex: usize = args[3].parse().unwrap();
     println!("Got key index: {}", keyindex);
     let testprivhex = &hex::decode(privhex).unwrap();
     let mut cursor = Cursor::new(&testprivhex);
@@ -129,18 +130,17 @@ pub fn main(){
     // deserializes from big endian, whereas the deserialization
     // of curve points from x-coords is little endian?
     let x = F::deserialize_compressed(&mut cursor).unwrap();
+    let filepath = &args[2];
+    let (p0proof,
+        p1proof,
+        path,
+    r,
+    H) = get_curve_tree_with_proof::<256, SecpBase, SecpConfig, SecqConfig>(
+            2, 11, filepath, keyindex);
     // next steps create the Pedersen DLEQ proof for this key:
     //
     // blinding factor for Pedersen
-    // TODO: this isn't yet correct; we need to use the same randomness
-    // as is used in the re-randomization code in the curve tree proof construction.
-    // The right way to do this is to take the return value of
-    // `select_and_rerandomize_prover_gadget` which outputs the randomization that was
-    // applied to the selected leaf, and re-use that in the Pedersen DLEQ proof
-    // (and we of course also need to reuse the same blinding generator base).
-    let r = F::rand(&mut rng);
-    // see above re: the generator H, here:
-    let (G, H, J) = get_generators::<SecpBase, SecpConfig>();
+    let (G, J) = get_generators::<SecpBase, SecpConfig>();
     let P = G.mul(x).into_affine();
     // TODO print out P as a sanity check.
     // the Pedersen commitment D is xG + rH
@@ -180,11 +180,6 @@ pub fn main(){
         E.serialize_uncompressed(&mut bufE).expect("Failed to serialize E");
         println!("This is the value of D: {:#?}", hex::encode(&bufD));
         println!("This is the value of E: {:#?}", hex::encode(&bufE));
-    let filepath = &args[2];
-    let (p0proof,
-        p1proof,
-        path) = get_curve_tree_with_proof::<256, SecpBase, SecpConfig, SecqConfig>(
-            2, 11, filepath, keyindex);
     //println!("P0proof is: {:#?}", p0proof);
     //println!("P1proof is: {:#?}", p1proof);
     let total_size =

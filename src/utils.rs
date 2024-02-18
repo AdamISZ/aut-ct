@@ -11,12 +11,14 @@ use ark_ec::short_weierstrass::Affine;
 use std::fs;
 
 // protocol requires three generators G, H, J:
+// update: H will be gotten from the CurveTree rerandomization,
+// so now only returning G, J
 pub fn get_generators<F: PrimeField,
-P0: SWCurveConfig<BaseField = F> + Copy>() -> (Affine<P0>, Affine<P0>, Affine<P0>){
+P0: SWCurveConfig<BaseField = F> + Copy>() -> (Affine<P0>, Affine<P0>){
 let G = P0::GENERATOR;
-let H = affine_from_bytes_tai::<Affine<P0>>(b"this is H");
+//let H = affine_from_bytes_tai::<Affine<P0>>(b"this is H");
 let J = affine_from_bytes_tai::<Affine<P0>>(b"this is J");
-(G, H, J)
+(G, J)
 }
 
 pub fn field_as_bytes<F: Field>(field: &F) -> Vec<u8> {

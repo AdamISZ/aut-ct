@@ -100,7 +100,7 @@ P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
     file_loc: &str,
     depth: usize,
-    generators_length_log_2: usize) -> CurveTree<L, P0, P1>{
+    generators_length_log_2: usize) -> (CurveTree<L, P0, P1>, Affine<P0>){
     let leaf_commitments = get_leaf_commitments(file_loc);
     let mut rng = rand::thread_rng();
     let generators_length = 1 << generators_length_log_2;
@@ -114,7 +114,7 @@ P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Co
     let curve_tree = CurveTree::<L, P0, P1>::from_set(
         &permissible_points, &sr_params, Some(depth));
     assert_eq!(curve_tree.height(), depth);
-    curve_tree
+    (curve_tree, sr_params.even_parameters.pc_gens.B_blinding)
 }
 pub fn main(){
     // User gives location of pubkey file as argument,
@@ -128,6 +128,11 @@ pub fn main(){
     //
     // read from file into buf:
     let buf = fs::read("proof.txt").unwrap();
+    // 1: Re-create the curve tree from pubkeys.txt
+    let (curve_tree, H) = get_curve_tree::
+    <256, SecpBase, SecpConfig, SecqConfig>(
+        pubkeys_filepath, 
+        2, 11);
     let mut cursor = Cursor::new(buf);
     let D = Affine::<SecpConfig>::deserialize_compressed(
         &mut cursor).expect("Failed to deserialize D");
@@ -136,7 +141,7 @@ pub fn main(){
     let proof = PedDleqProof::<Affine<SecpConfig>>::deserialize_with_mode(
         &mut cursor, Compress::Yes, Validate::Yes).unwrap();
     let mut transcript = Transcript::new(b"ped-dleq-test");
-    let (G, H, J) = get_generators();
+    let (G, J) = get_generators();
     assert!(proof
             .verify(
                 &mut transcript,
@@ -149,11 +154,6 @@ pub fn main(){
             .is_ok());
     // Next, we validate the curve tree proof.
     // Steps:
-    // 1: Re-create the curve tree from pubkeys.txt
-    let curve_tree = get_curve_tree::
-    <256, SecpBase, SecpConfig, SecqConfig>(
-        pubkeys_filepath, 
-        2, 11);
     // 2: Read p0proof, p1proof, path from the pre-existing buffer of proof.txt
     let p0proof = 
     R1CSProof::<Affine<SecpConfig>>::deserialize_with_mode(
