@@ -101,6 +101,5 @@ Yes, this is all laughably primitive for now.
 TODO
 ===
 
-There are at least two changes needed still: 1/ the Pedersen commitment `D` used in the Pedersen-DLEQ proof refers to one specific key, whose index is not yet specified as an argument to the proving program. Moreover, and more importantly, 2/ the Pedersen commitment `D` uses randomness which is not related to the Curve Tree's rerandomized key. Thus we need to modify the curve tree construction code itself, to allow inserting this value into the creation of the proof.
-
+Needs several basic things to flesh it out. Tests of the PedDLEQ primitive. More sample test data ( a set of test vectors). User choice of tree parameters (depth, height), and/or choice of parameters depending on data set. Ability to enter secret key in a safer way than on the command line(!), as well as many other security considerations. An API/interface. Proper command line arguments, help messages etc. Standard format for inputting keys, perhaps a bolt on tool to take data from Bitcoin blocks and convert to a more compact format for public keys. Need to solve the question of how to make the universal hashing for permissible points be deterministic (see patch above).
 
