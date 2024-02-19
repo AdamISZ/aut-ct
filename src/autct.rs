@@ -16,7 +16,6 @@ use ark_serialize::{
     CanonicalSerialize, CanonicalDeserialize, Compress};
 use relations::curve_tree::{SelRerandParameters, CurveTree, SelectAndRerandomizePath};
 use std::env;
-use std::io::Cursor;
 use std::ops::{Mul, Add};
 use merlin::Transcript;
 
@@ -91,6 +90,12 @@ pub fn get_curve_tree_with_proof<
     let (permissible_points, _permissible_randomnesses) =
         create_permissible_points_and_randomnesses::<F, P0, P1>(&leaf_commitments, &sr_params);
 
+    println!("Printing out leaf commitments:");
+    for l in leaf_commitments {
+        let mut bufl = Vec::new();
+        l.serialize_compressed(&mut bufl).expect("Failed to deserialize leaf commitmnet");
+        println!("Here is lcomm: {:#?}", hex::encode(&bufl));
+    }
     let curve_tree = CurveTree::<L, P0, P1>::from_set(
         &permissible_points, &sr_params, Some(depth));
     assert_eq!(curve_tree.height(), depth);
@@ -122,27 +127,37 @@ pub fn main(){
     println!("Here is args: {}, {}", args[0], args[1]);
     // read privkey from command line (TODO, use a file)
     let privhex = &args[1];
+    // position of our key in the list;
+    // TODO needs a tool to make it easy for usage.
     let keyindex: usize = args[3].parse().unwrap();
     println!("Got key index: {}", keyindex);
-    let testprivhex = &hex::decode(privhex).unwrap();
-    let mut cursor = Cursor::new(&testprivhex);
-    // TODO check: is it the case that this x value
-    // deserializes from big endian, whereas the deserialization
-    // of curve points from x-coords is little endian?
-    let x = F::deserialize_compressed(&mut cursor).unwrap();
+
+    // all the encodings in the ark-ff stuff is LE, so we
+    // must convert. TODO relegate to utils for dedup.
+    let mut privle = hex::decode(privhex).expect("hex decode failed");
+    privle.reverse();
+
+
+    let x = F::deserialize_compressed(&privle[..]).unwrap();
     let filepath = &args[2];
     let (p0proof,
         p1proof,
         path,
     r,
-    H) = get_curve_tree_with_proof::<256, SecpBase, SecpConfig, SecqConfig>(
+    H) = get_curve_tree_with_proof::<
+    256,
+    SecpBase,
+    SecpConfig,
+    SecqConfig>(
             2, 11, filepath, keyindex);
     // next steps create the Pedersen DLEQ proof for this key:
     //
     // blinding factor for Pedersen
     let (G, J) = get_generators::<SecpBase, SecpConfig>();
     let P = G.mul(x).into_affine();
-    // TODO print out P as a sanity check.
+    let mut bufP = Vec::new();
+    P.serialize_compressed(&mut bufP).expect("Failed to serialize P");
+    println!("Here is our pubkey: {:#?}", hex::encode(&bufP));
     // the Pedersen commitment D is xG + rH
     let rH = H.mul(r).into_affine();
     let D = P.add(rH).into_affine();
@@ -175,13 +190,11 @@ pub fn main(){
             .is_ok());
         let mut bufD: Vec<u8> = Vec::new();
 
-        D.serialize_uncompressed(&mut bufD).expect("Failed to serialize D");
+        D.serialize_compressed(&mut bufD).expect("Failed to serialize D");
         let mut bufE = Vec::new();
-        E.serialize_uncompressed(&mut bufE).expect("Failed to serialize E");
+        E.serialize_compressed(&mut bufE).expect("Failed to serialize E");
         println!("This is the value of D: {:#?}", hex::encode(&bufD));
         println!("This is the value of E: {:#?}", hex::encode(&bufE));
-    //println!("P0proof is: {:#?}", p0proof);
-    //println!("P1proof is: {:#?}", p1proof);
     let total_size =
     33 + 33 + // D and E points (compressed)
     proof.serialized_size(Compress::Yes) + 
@@ -194,6 +207,10 @@ pub fn main(){
     proof.serialize_with_mode(&mut buf2, Compress::Yes).unwrap();
     p0proof.serialize_compressed(&mut buf2).unwrap();
     p1proof.serialize_compressed(&mut buf2).unwrap();
+    // TODO:
+    // here sanity check that the final path entry we output is identical to D,
+    // otherwise the two proofs do not tie together and therefore the key
+    // image is not valid (so far only checked it manually!)
     path.serialize_compressed(&mut buf2).unwrap();
     write_file_string("proof.txt", buf2);
     println!("Proof generated successfully and wrote to proof.txt. Size was {}", total_size);

@@ -131,7 +131,7 @@ pub fn main(){
     // 1: Re-create the curve tree from pubkeys.txt
     let (curve_tree, H) = get_curve_tree::
     <256, SecpBase, SecpConfig, SecqConfig>(
-        pubkeys_filepath, 
+        pubkeys_filepath,
         2, 11);
     let mut cursor = Cursor::new(buf);
     let D = Affine::<SecpConfig>::deserialize_compressed(
