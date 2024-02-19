@@ -58,7 +58,7 @@ pub fn verify_curve_tree_proof<
     curve_tree: CurveTree<L, P0, P1>,
     p0proof: R1CSProof<Affine<P0>>,
     p1proof: R1CSProof<Affine<P1>>,
-) {
+) -> Affine<P0> {
     // TODO we do *not* want to use randomness as input to the
     // universal hash function for permissible points, since that precludes
     // people independently creating the same tree of permissible points.
@@ -76,7 +76,7 @@ pub fn verify_curve_tree_proof<
     let _rerandomized_leaf = curve_tree.select_and_rerandomize_verifier_gadget(
         &mut secp_verifier,
         &mut secq_verifier,
-        path_commitments,
+        path_commitments.clone(),
         &sr_params,
     );
     let secq_res = secq_verifier.verify(
@@ -91,6 +91,9 @@ pub fn verify_curve_tree_proof<
     );
     assert_eq!(secq_res, secp_res);
     assert_eq!(secq_res, Ok(()));
+    // return the last commitment so that it can be checked
+    // that it matches the D value from the Ped-DLEQ:
+    *path_commitments.even_commitments.last().unwrap()
 }
 
 fn get_curve_tree<
@@ -168,12 +171,13 @@ pub fn main(){
     // 3: Call verify_curve_tree with (curve tree, p0proof, p1proof, path)
     use std::time::Instant;
     let before = Instant::now();
-    verify_curve_tree_proof(11, path, curve_tree, p0proof, p1proof);
+    let claimed_D = verify_curve_tree_proof(11, path, curve_tree, p0proof, p1proof);
     println!("Elapsed time: {:.2?}", before.elapsed());
+    assert_eq!(claimed_D, D);
     // 4: If not assertion error, print out that it passed.
     let mut bufEfinal: Vec<u8> = Vec::new();
     E.serialize_compressed(&mut bufEfinal).expect("failed to serialize E");
-    println!("Verifying curve tree passed, here is key image: {:?}", hex::encode(&bufEfinal));
+    println!("Verifying curve tree passed and it matched the key image. Here is the key image: {:?}", hex::encode(&bufEfinal));
 
 }
 

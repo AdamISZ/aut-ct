@@ -90,12 +90,12 @@ pub fn get_curve_tree_with_proof<
     let (permissible_points, _permissible_randomnesses) =
         create_permissible_points_and_randomnesses::<F, P0, P1>(&leaf_commitments, &sr_params);
 
-    println!("Printing out leaf commitments:");
-    for l in leaf_commitments {
-        let mut bufl = Vec::new();
-        l.serialize_compressed(&mut bufl).expect("Failed to deserialize leaf commitmnet");
-        println!("Here is lcomm: {:#?}", hex::encode(&bufl));
-    }
+    //println!("Printing out leaf commitments:");
+    //for l in leaf_commitments {
+    //    let mut bufl = Vec::new();
+    //    l.serialize_compressed(&mut bufl).expect("Failed to deserialize leaf commitmnet");
+    //    println!("Here is lcomm: {:#?}", hex::encode(&bufl));
+    //}
     let curve_tree = CurveTree::<L, P0, P1>::from_set(
         &permissible_points, &sr_params, Some(depth));
     assert_eq!(curve_tree.height(), depth);
@@ -124,11 +124,10 @@ pub fn main(){
 
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     let args: Vec<String> = env::args().collect();
-    println!("Here is args: {}, {}", args[0], args[1]);
     // read privkey from command line (TODO, use a file)
     let privhex = &args[1];
     // position of our key in the list;
-    // TODO needs a tool to make it easy for usage.
+    // TODO add a lookup from a provided key
     let keyindex: usize = args[3].parse().unwrap();
     println!("Got key index: {}", keyindex);
 
@@ -207,10 +206,6 @@ pub fn main(){
     proof.serialize_with_mode(&mut buf2, Compress::Yes).unwrap();
     p0proof.serialize_compressed(&mut buf2).unwrap();
     p1proof.serialize_compressed(&mut buf2).unwrap();
-    // TODO:
-    // here sanity check that the final path entry we output is identical to D,
-    // otherwise the two proofs do not tie together and therefore the key
-    // image is not valid (so far only checked it manually!)
     path.serialize_compressed(&mut buf2).unwrap();
     write_file_string("proof.txt", buf2);
     println!("Proof generated successfully and wrote to proof.txt. Size was {}", total_size);
