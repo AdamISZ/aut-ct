@@ -84,7 +84,7 @@ Then, build the project with `cargo build --release` (without release flag, the 
 ./autct 37......cf somepubkeys.txt
 ```
 
-The prover provides a hex-encoded 32 byte string, as private key, as first argument, then a plaintext file with a list of pubkeys, compressed, hex encoded, separated by whitespace, all on one line. The output is `proof.txt`, which should usually be around 2-3kB.
+The prover provides a hex-encoded 32 byte string, as private key, as first argument, then a plaintext file with a list of pubkeys, compressed, hex encoded, separated by whitespace, all on one line. The output is `proof.txt`, which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file, in order to identify the correct index to use in the proof.
 
 ```
 ./autctverify somepubkeys.txt
