@@ -9,7 +9,14 @@ use ark_ec::AffineRepr;
 use ark_ec::short_weierstrass::SWCurveConfig;
 use ark_ec::short_weierstrass::Affine;
 use std::fs;
+use ark_serialize::CanonicalSerialize;
 
+pub fn print_affine_compressed<F: PrimeField,
+P0: SWCurveConfig<BaseField = F> + Copy>(pt: Affine<P0>, name: &str) {
+    let mut b = Vec::new();
+        pt.serialize_compressed(&mut b).expect("Failed to serialize point");
+    println!("This is the value of {}: {:#?}", name, hex::encode(&b));
+}
 // protocol requires three generators G, H, J:
 // update: H will be gotten from the CurveTree rerandomization,
 // so now only returning G, J

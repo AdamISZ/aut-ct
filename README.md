@@ -92,7 +92,7 @@ The prover provides a hex-encoded 32 byte string, as private key, as first argum
 
 The verifier must also be provided the same pubkey text file, and checks the content of `proof.txt` and outputs the key image if it verifies (actually, it just panics and crashes if it doesn't :laughing: ). The idea is that if a person tries to reuse their key, it will "verify" but you can reject it if it has the same key image as a previous run.
 
-In the directory `testdata` there is an example pubkey file containing approximately 48000 pubkeys taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. The private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `5e689beef305f82a20d6fb6be870456052dfdc9647e9acaa9bc9eab31d10b9ff00`. 
+In the directory `testdata` there is an example pubkey file containing approximately 48000 pubkeys taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. The private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `a496230673e00ed72abe37b9acd01763620f918e5618df4d0db1377d0d8ba72d80`. 
 
 Additionally the depth and branching factors of the Curve Tree are still hard coded (2, 256 respectively); obviously this can be mode configurable.
 

@@ -55,7 +55,7 @@ pub fn verify_curve_tree_proof<
 >(
     generators_length_log_2: usize,
     path_commitments: SelectAndRerandomizePath<L, P0, P1>,
-    curve_tree: CurveTree<L, P0, P1>,
+    curve_tree: &CurveTree<L, P0, P1>,
     p0proof: R1CSProof<Affine<P0>>,
     p1proof: R1CSProof<Affine<P1>>,
 ) -> Affine<P0> {
@@ -93,7 +93,8 @@ pub fn verify_curve_tree_proof<
     assert_eq!(secq_res, Ok(()));
     // return the last commitment so that it can be checked
     // that it matches the D value from the Ped-DLEQ:
-    *path_commitments.even_commitments.last().unwrap()
+    //*path_commitments.even_commitments.last().unwrap()
+    path_commitments.get_rerandomized_leaf()
 }
 
 fn get_curve_tree<
@@ -168,12 +169,29 @@ pub fn main(){
     SelectAndRerandomizePath::<256, SecpConfig, SecqConfig>::deserialize_with_mode(
         &mut cursor, Compress::Yes, Validate::Yes).expect("failed path deserialize");
     
+        let newpath = curve_tree.select_and_rerandomize_verification_commitments(path.clone());
     // 3: Call verify_curve_tree with (curve tree, p0proof, p1proof, path)
     use std::time::Instant;
     let before = Instant::now();
-    let claimed_D = verify_curve_tree_proof(11, path, curve_tree, p0proof, p1proof);
+    let claimed_D = verify_curve_tree_proof(
+        11, path.clone(), &curve_tree, p0proof, p1proof);
     println!("Elapsed time: {:.2?}", before.elapsed());
     assert_eq!(claimed_D, D);
+    // check also that the path's first node matches the root of the tree that we
+    // constructed from the keyset
+    // TODO see comments on autct.rs construction of root also.
+    let root_is_odd = newpath.even_commitments.len() == newpath.odd_commitments.len();
+    println!("Root is odd? {}", root_is_odd);
+    let root: Affine<SecpConfig>;
+    if !root_is_odd {
+        root = *newpath.even_commitments.first().unwrap();
+    }
+    else {
+        // derp, see above TODO
+        panic!("Wrong root parity, should be even");
+    }
+    print_affine_compressed(root, "root");
+
     // 4: If not assertion error, print out that it passed.
     let mut bufEfinal: Vec<u8> = Vec::new();
     E.serialize_compressed(&mut bufEfinal).expect("failed to serialize E");

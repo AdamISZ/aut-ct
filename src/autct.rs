@@ -64,7 +64,7 @@ pub fn get_curve_tree_with_proof<
 ) -> (R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>,
     SelectAndRerandomizePath<L, P0, P1>,
     P0::ScalarField,
-    Affine<P0>) {
+    Affine<P0>, Affine<P0>) {
     let mut rng = rand::thread_rng();
     let generators_length = 1 << generators_length_log_2;
 
@@ -90,12 +90,6 @@ pub fn get_curve_tree_with_proof<
     let (permissible_points, _permissible_randomnesses) =
         create_permissible_points_and_randomnesses::<F, P0, P1>(&leaf_commitments, &sr_params);
 
-    //println!("Printing out leaf commitments:");
-    //for l in leaf_commitments {
-    //    let mut bufl = Vec::new();
-    //    l.serialize_compressed(&mut bufl).expect("Failed to deserialize leaf commitmnet");
-    //    println!("Here is lcomm: {:#?}", hex::encode(&bufl));
-    //}
     let curve_tree = CurveTree::<L, P0, P1>::from_set(
         &permissible_points, &sr_params, Some(depth));
     assert_eq!(curve_tree.height(), depth);
@@ -108,6 +102,26 @@ pub fn get_curve_tree_with_proof<
         &sr_params,
         &mut rng,
     );
+    // print the root of the curve tree.
+    // TODO: how to allow the return value to be either
+    // Affine<P0> or Affine<P1>? And as a consequence,
+    // to let the code be correct for any depth.
+    // And/or, is there not
+    // a simpler way to extract the root of the tree
+    // (which should be just .parent_commitment, but all methods
+    // to extract this value seem to be private)
+    let newpath = curve_tree.select_and_rerandomize_verification_commitments(
+    path_commitments.clone());
+    let root_is_odd = newpath.even_commitments.len() == newpath.odd_commitments.len();
+    println!("Root is odd? {}", root_is_odd);
+    let root: Affine<P0>;
+    if !root_is_odd {
+        root = *newpath.even_commitments.first().unwrap();
+    }
+    else {
+        // derp, see above TODO
+        panic!("Wrong root parity, should be even");
+    }
     // as well as the randomness in the blinded commitment, we also need to use the same
     // blinding base:
     let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
@@ -117,7 +131,7 @@ pub fn get_curve_tree_with_proof<
     let p1_proof = p1_prover
         .prove(&sr_params.odd_parameters.bp_gens)
         .unwrap();
-    (p0_proof, p1_proof, path_commitments, rand_scalar, b_blinding)
+    (p0_proof, p1_proof, path_commitments, rand_scalar, b_blinding, root)
 }
 
 pub fn main(){
@@ -143,7 +157,8 @@ pub fn main(){
         p1proof,
         path,
     r,
-    H) = get_curve_tree_with_proof::<
+    H,
+    root) = get_curve_tree_with_proof::<
     256,
     SecpBase,
     SecpConfig,
@@ -187,13 +202,8 @@ pub fn main(){
                 &J,
             )
             .is_ok());
-        let mut bufD: Vec<u8> = Vec::new();
-
-        D.serialize_compressed(&mut bufD).expect("Failed to serialize D");
-        let mut bufE = Vec::new();
-        E.serialize_compressed(&mut bufE).expect("Failed to serialize E");
-        println!("This is the value of D: {:#?}", hex::encode(&bufD));
-        println!("This is the value of E: {:#?}", hex::encode(&bufE));
+        print_affine_compressed(D, "D");
+        print_affine_compressed(E, "E");
     let total_size =
     33 + 33 + // D and E points (compressed)
     proof.serialized_size(Compress::Yes) + 
@@ -209,4 +219,6 @@ pub fn main(){
     path.serialize_compressed(&mut buf2).unwrap();
     write_file_string("proof.txt", buf2);
     println!("Proof generated successfully and wrote to proof.txt. Size was {}", total_size);
+    //println!("The root of the tree is: ");
+    print_affine_compressed(root, "root");
 }
