@@ -60,7 +60,7 @@ pub fn get_curve_tree_with_proof<
     depth: usize,
     generators_length_log_2: usize,
     pubkey_file_path: &str,
-    key_index: usize,
+    our_pubkey: Affine<P0>,
 ) -> (R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>,
     SelectAndRerandomizePath<L, P0, P1>,
     P0::ScalarField,
@@ -94,6 +94,14 @@ pub fn get_curve_tree_with_proof<
         &permissible_points, &sr_params, Some(depth));
     assert_eq!(curve_tree.height(), depth);
 
+    // derive the index where our pubkey is in the list:
+    let mut key_index: usize = 0;
+    match permissible_points.iter().position(|&x| x  == our_pubkey) {
+        None => println!("provided pubkey not found in the set"),
+        Some(ks) => {
+            key_index = ks;
+        },
+    }
     let (path_commitments, rand_scalar) =
     curve_tree.select_and_rerandomize_prover_gadget(
         key_index,
@@ -140,18 +148,16 @@ pub fn main(){
     let args: Vec<String> = env::args().collect();
     // read privkey from command line (TODO, use a file)
     let privhex = &args[1];
-    // position of our key in the list;
-    // TODO add a lookup from a provided key
-    let keyindex: usize = args[3].parse().unwrap();
-    println!("Got key index: {}", keyindex);
 
     // all the encodings in the ark-ff stuff is LE, so we
     // must convert. TODO relegate to utils for dedup.
     let mut privle = hex::decode(privhex).expect("hex decode failed");
     privle.reverse();
-
-
     let x = F::deserialize_compressed(&privle[..]).unwrap();
+    let (G, J) = get_generators::<SecpBase, SecpConfig>();
+    let P = G.mul(x).into_affine();
+    print_affine_compressed(P, "our pubkey");
+
     let filepath = &args[2];
     let (p0proof,
         p1proof,
@@ -163,15 +169,10 @@ pub fn main(){
     SecpBase,
     SecpConfig,
     SecqConfig>(
-            2, 11, filepath, keyindex);
+            2, 11, filepath, P);
     // next steps create the Pedersen DLEQ proof for this key:
     //
     // blinding factor for Pedersen
-    let (G, J) = get_generators::<SecpBase, SecpConfig>();
-    let P = G.mul(x).into_affine();
-    let mut bufP = Vec::new();
-    P.serialize_compressed(&mut bufP).expect("Failed to serialize P");
-    println!("Here is our pubkey: {:#?}", hex::encode(&bufP));
     // the Pedersen commitment D is xG + rH
     let rH = H.mul(r).into_affine();
     let D = P.add(rH).into_affine();
