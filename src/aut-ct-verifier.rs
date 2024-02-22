@@ -26,27 +26,12 @@ use std::fs;
 use std::env;
 use std::io::Cursor;
 
-fn create_permissible_points_and_randomnesses<
-   F: PrimeField,
-   P0: SWCurveConfig<BaseField = F> + Copy,
-   P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
-    leaf_commitments: &[Affine<P0>],
-    sr_params: &SelRerandParameters<P0, P1>,
-) -> (Vec<Affine<P0>>, Vec<P1::BaseField>) {
-    leaf_commitments
-        .iter()
-        .map(|commitment| {
-            sr_params
-                .even_parameters
-                .uh
-                .permissible_commitment(commitment, &sr_params.even_parameters.pc_gens.B_blinding)
-        })
-        .unzip()
-}
-
 // This function thows assertion errors if the given
-// set (curve_tree, p0proof, p1proof, path_commitments)
-// do not validate
+// set (curve_tree, p0proof, p1proof, path_commitments, root)
+// do not validate ('curve_tree' is generated locally by the
+// verifier from the keyset, and that is compared against the other
+// items, which are all deserialized from the proof string given
+// by the Prover)
 pub fn verify_curve_tree_proof<
     const L: usize,
     F: PrimeField,
@@ -58,6 +43,7 @@ pub fn verify_curve_tree_proof<
     curve_tree: &CurveTree<L, P0, P1>,
     p0proof: R1CSProof<Affine<P0>>,
     p1proof: R1CSProof<Affine<P1>>,
+    root: Affine<P0>,
 ) -> Affine<P0> {
     // TODO we do *not* want to use randomness as input to the
     // universal hash function for permissible points, since that precludes
@@ -91,9 +77,26 @@ pub fn verify_curve_tree_proof<
     );
     assert_eq!(secq_res, secp_res);
     assert_eq!(secq_res, Ok(()));
+
+    // check also that the path's first node matches the root of the tree that we
+    // constructed from the keyset
+    // TODO see comments on autct.rs construction of root also.
+    let newpath = curve_tree.select_and_rerandomize_verification_commitments(
+        path_commitments.clone());
+    let root_is_odd = newpath.even_commitments.len() == newpath.odd_commitments.len();
+    println!("Root is odd? {}", root_is_odd);
+    let verifier_root: Affine<P0>;
+    if !root_is_odd {
+        verifier_root = *newpath.even_commitments.first().unwrap();
+    }
+    else {
+        // derp, see above TODO
+        panic!("Wrong root parity, should be even");
+    }
+    assert_eq!(root, verifier_root);
+
     // return the last commitment so that it can be checked
     // that it matches the D value from the Ped-DLEQ:
-    //*path_commitments.even_commitments.last().unwrap()
     path_commitments.get_rerandomized_leaf()
 }
 
@@ -168,29 +171,17 @@ pub fn main(){
     let path = 
     SelectAndRerandomizePath::<256, SecpConfig, SecqConfig>::deserialize_with_mode(
         &mut cursor, Compress::Yes, Validate::Yes).expect("failed path deserialize");
-    
-        let newpath = curve_tree.select_and_rerandomize_verification_commitments(path.clone());
+
+    // TODO this is part of the 'can we handle different root parity' problem:
+    let prover_root = Affine::<SecpConfig>::deserialize_compressed(
+            &mut cursor).expect("Failed to deserialize root");
     // 3: Call verify_curve_tree with (curve tree, p0proof, p1proof, path)
     use std::time::Instant;
     let before = Instant::now();
     let claimed_D = verify_curve_tree_proof(
-        11, path.clone(), &curve_tree, p0proof, p1proof);
+        11, path.clone(), &curve_tree, p0proof, p1proof, prover_root);
     println!("Elapsed time: {:.2?}", before.elapsed());
     assert_eq!(claimed_D, D);
-    // check also that the path's first node matches the root of the tree that we
-    // constructed from the keyset
-    // TODO see comments on autct.rs construction of root also.
-    let root_is_odd = newpath.even_commitments.len() == newpath.odd_commitments.len();
-    println!("Root is odd? {}", root_is_odd);
-    let root: Affine<SecpConfig>;
-    if !root_is_odd {
-        root = *newpath.even_commitments.first().unwrap();
-    }
-    else {
-        // derp, see above TODO
-        panic!("Wrong root parity, should be even");
-    }
-    print_affine_compressed(root, "root");
 
     // 4: If not assertion error, print out that it passed.
     let mut bufEfinal: Vec<u8> = Vec::new();

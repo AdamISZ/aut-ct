@@ -10,7 +10,7 @@ use autct::peddleq::PedDleqProof;
 use bulletproofs::r1cs::R1CSProof;
 use bulletproofs::r1cs::Prover;
 use alloc::vec::Vec;
-use ark_ec::{AffineRepr, short_weierstrass::SWCurveConfig, CurveGroup, VariableBaseMSM};
+use ark_ec::{AffineRepr, short_weierstrass::SWCurveConfig, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::{
     CanonicalSerialize, CanonicalDeserialize, Compress};
@@ -22,29 +22,6 @@ use merlin::Transcript;
 use ark_ec::short_weierstrass::Affine;
 use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
 use ark_secq256k1::Config as SecqConfig;
-
-
-pub fn commit<C: AffineRepr>(value: C::ScalarField, blinding: C::ScalarField, basepoint1: &C, basepoint2: &C) -> C {
-    C::Group::msm_unchecked(&[*basepoint1, *basepoint2], &[value, blinding]).into()
-}
-
-fn create_permissible_points_and_randomnesses<
-   F: PrimeField,
-   P0: SWCurveConfig<BaseField = F> + Copy,
-   P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
-    leaf_commitments: &[Affine<P0>],
-    sr_params: &SelRerandParameters<P0, P1>,
-) -> (Vec<Affine<P0>>, Vec<P1::BaseField>) {
-    leaf_commitments
-        .iter()
-        .map(|commitment| {
-            sr_params
-                .even_parameters
-                .uh
-                .permissible_commitment(commitment, &sr_params.even_parameters.pc_gens.B_blinding)
-        })
-        .unzip()
-}
 
 // this function returns the curve tree for the set of points
 // read from disk (currently pubkey file location is passed as an argument), and
@@ -97,7 +74,7 @@ pub fn get_curve_tree_with_proof<
     // derive the index where our pubkey is in the list:
     let mut key_index: usize = 0;
     match permissible_points.iter().position(|&x| x  == our_pubkey) {
-        None => println!("provided pubkey not found in the set"),
+        None => panic!("provided pubkey not found in the set"),
         Some(ks) => {
             key_index = ks;
         },
@@ -218,6 +195,7 @@ pub fn main(){
     p0proof.serialize_compressed(&mut buf2).unwrap();
     p1proof.serialize_compressed(&mut buf2).unwrap();
     path.serialize_compressed(&mut buf2).unwrap();
+    root.serialize_compressed(&mut buf2).unwrap();
     write_file_string("proof.txt", buf2);
     println!("Proof generated successfully and wrote to proof.txt. Size was {}", total_size);
     //println!("The root of the tree is: ");

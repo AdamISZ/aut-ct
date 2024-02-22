@@ -10,6 +10,7 @@ use ark_ec::short_weierstrass::SWCurveConfig;
 use ark_ec::short_weierstrass::Affine;
 use std::fs;
 use ark_serialize::CanonicalSerialize;
+use relations::curve_tree::SelRerandParameters;
 
 pub fn print_affine_compressed<F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy>(pt: Affine<P0>, name: &str) {
@@ -87,4 +88,22 @@ pub fn get_leaf_commitments<F: PrimeField,
             .into_iter()
             .map(|x| <Affine<P0> as AffineRepr>::from_random_bytes(&x[..]).unwrap()).collect();
     leaf_commitments
+}
+
+pub fn create_permissible_points_and_randomnesses<
+   F: PrimeField,
+   P0: SWCurveConfig<BaseField = F> + Copy,
+   P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
+    leaf_commitments: &[Affine<P0>],
+    sr_params: &SelRerandParameters<P0, P1>,
+) -> (Vec<Affine<P0>>, Vec<P1::BaseField>) {
+    leaf_commitments
+        .iter()
+        .map(|commitment| {
+            sr_params
+                .even_parameters
+                .uh
+                .permissible_commitment(commitment, &sr_params.even_parameters.pc_gens.B_blinding)
+        })
+        .unzip()
 }
