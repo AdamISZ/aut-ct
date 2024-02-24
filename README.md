@@ -70,7 +70,7 @@ You need to edit the Cargo.toml of the `curve-trees` repo (so `cd ..` to go up o
 members = [
     "bulletproofs",
     "relations",
-    "autct"
+    "aut-ct"
 ]
 
 [workspace.package]
@@ -97,6 +97,30 @@ In the directory `testdata` there is an example pubkey file containing approxima
 Additionally the depth and branching factors of the Curve Tree are still hard coded (2, 256 respectively); obviously this can be mode configurable.
 
 Yes, this is all laughably primitive for now.
+
+Checking your development environment
+==========================
+
+Compute the proof:
+
+```
+target/release/autct \
+     373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf \
+     aut-ct/testdata/signet-pubkeys-85000-155000.txt
+```
+
+Verify the proof:
+
+```
+target/release/autctverify aut-ct/testdata/signet-pubkeys-85000-155000.txt
+```
+
+Ouput should contain:
+
+```
+Verifying curve tree passed and it matched the key image.
+```
+
 
 TODO
 ===
