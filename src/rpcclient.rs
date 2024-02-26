@@ -18,8 +18,7 @@ async fn main() {
     let buf = fs::read(proof_file_str).unwrap();
     let addr = "127.0.0.1:23333";
     let mut client = Client::dial(addr).await.unwrap();
-    // TODO while testing keep this long but we will dial it back
-    client.set_default_timeout(std::time::Duration::from_secs(300));
+    client.set_default_timeout(std::time::Duration::from_secs(3));
     let result: i32 = client
     .r_p_c_proof_verifier().verify((pubkey_file_str, buf))
     .await
