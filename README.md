@@ -3,7 +3,7 @@ Anonymous usage tokens from curve trees (WIP)
 
 (Caveat: read the section "Caveat", please. Also, this is not quite finished, hence "WIP", see details at the end.)
 
-If you are time constrained and just want to see it run, go to "Installation" and then "Checking your development environment".
+If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to "Installation" and then "Worked Example".
 
 Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short (sub second at least) so that it can be used practically in real systems.
 
@@ -113,7 +113,7 @@ Additionally the depth and branching factors of the Curve Tree are still hard co
 
 Yes, this is still very primitive for now, a proof of concept.
 
-Checking your development environment
+Worked Example
 ==========================
 
 Compute the proof:
