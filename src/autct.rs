@@ -72,7 +72,7 @@ pub fn get_curve_tree_with_proof<
     assert_eq!(curve_tree.height(), depth);
 
     // derive the index where our pubkey is in the list:
-    let mut key_index: usize = 0;
+    let key_index: usize;
     match permissible_points.iter().position(|&x| x  == our_pubkey) {
         None => panic!("provided pubkey not found in the set"),
         Some(ks) => {
