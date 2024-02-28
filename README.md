@@ -29,59 +29,18 @@ Installation
 
 Set up Rust, if you haven't, using [rustup](https://rustup.rs/).
 
-Install curve trees, then install this project inside it:
+Install this project:
 
 ```
-git clone https://github.com/simonkamp/curve-trees
-cd curve-trees
 git clone https://github.com/AdamISZ/aut-ct
 ```
 
-Temporary:
-For now I need to patch the universal hash construction so it can be recreated by more than one participant (the idea is that the base tree is transparently constructible by all parties, from the same set of bitcoin/utxo pubkeys; but the ZK proof construction requires that the tiebreaker for the y-coord of a compressed EC point take a certain algebraic form (this is called in the paper, and code, "permissible points"), and *this* requires passing through a "universal hash function" which in the code is just constructed from random inputs; the following patch forces those vars to be a fixed value, so they're the same between both parties. I'm not 100% sure what the right solution is, but this is just a "for now, to make it work":
 
-```
-diff --git a/relations/src/permissible.rs b/relations/src/permissible.rs
-index 032d0ad..e1d0eb5 100644
---- a/relations/src/permissible.rs
-+++ b/relations/src/permissible.rs
-@@ -18,8 +18,14 @@ pub struct UniversalHash<F: Field> {
- impl<F: Field> UniversalHash<F> {
-     pub fn new<R: Rng>(rng: &mut R, a: F, b: F) -> Self {
-         Self {
--            alpha: F::rand(rng),
--            beta: F::rand(rng),
-+            // Doctoring this to just use a fixed value for now,
-+            // instead of the rng; TODO we want deterministic
-+            // random values for both prover and verifier
-+            // to come up with the same SRParams values:
-+            alpha: F::try_from(42u64).unwrap(),
-+            beta: F::try_from(690u64).unwrap(),
-+            //alpha: F::rand(rng),
-+            //beta: F::rand(rng),
-             a,
-             b,
-         }
-```
 
 Running
 ===
 
-You need to edit the Cargo.toml of the `curve-trees` repo (so `cd ..` to go up one level from `autct`). Add `autct` to the list of `members`, and add a section for `workspace.package`, as below:
-
-```
-[workspace]
-members = [
-    "bulletproofs",
-    "relations",
-    "aut-ct"
-]
-
-[workspace.package]
-version = "0.1.0"
-```
-
-Then, build the project with `cargo build --release` (without release flag, the debug version is very slow), then the binaries are in `curve-trees/target/release`. There are three binaries, `autct`, `rpcclient`, `rpcserver`. Taking each in turn:
+Build the project with `cargo build --release` (without release flag, the debug version is very slow), then the binaries are in `curve-trees/target/release`. There are three binaries, `autct`, `rpcclient`, `rpcserver`. Taking each in turn:
 
 `autct`:
 
