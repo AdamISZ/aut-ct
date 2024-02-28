@@ -11,7 +11,7 @@ use bulletproofs::r1cs::R1CSProof;
 use bulletproofs::r1cs::Prover;
 use alloc::vec::Vec;
 use ark_ec::{AffineRepr, short_weierstrass::SWCurveConfig, CurveGroup};
-use ark_ff::PrimeField;
+use ark_ff::{PrimeField, Zero, One};
 use ark_serialize::{
     CanonicalSerialize, CanonicalDeserialize, Compress};
 use relations::curve_tree::{SelRerandParameters, CurveTree, SelectAndRerandomizePath};
@@ -41,7 +41,7 @@ pub fn get_curve_tree_with_proof<
 ) -> (R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>,
     SelectAndRerandomizePath<L, P0, P1>,
     P0::ScalarField,
-    Affine<P0>, Affine<P0>) {
+    Affine<P0>, Affine<P0>, bool) {
     let mut rng = rand::thread_rng();
     let generators_length = 1 << generators_length_log_2;
 
@@ -60,7 +60,24 @@ pub fn get_curve_tree_with_proof<
     // to emphasize that we are not committing to scalars, but using points (i.e. pubkeys)
     // as the commitments (i.e. pedersen commitments with zero randomness) at
     // the leaf level.
+    let mut privkey_parity_flip: bool = false;
     let leaf_commitments = get_leaf_commitments::<F, P0>(pubkey_file_path);
+    // derive the index where our pubkey is in the list:
+    let mut key_index: i32; // we're guaranteed to overwrite or panic but the compiler insists.
+    key_index = match leaf_commitments.iter().position(|&x| x  == our_pubkey) {
+        None => -1,
+        Some(ks) => ks.try_into().unwrap()
+    };
+    if key_index == -1 {
+        key_index = match leaf_commitments.iter().position(|&x| x == -our_pubkey) {
+            None => panic!("provided pubkey not found in the set"),
+            Some(ks) => {
+                //print_affine_compressed(leaf_commitments[ks], "P in leaf commitments set");
+                privkey_parity_flip = true;
+                ks.try_into().unwrap()
+            }
+        }
+    };
     // the conversion to permissible needs to be deterministic.
     // TODO: figure out how to do the Universal Hash step without random values
     // (for now, we have edited the underlying universal hash code to accommodate this)
@@ -71,22 +88,30 @@ pub fn get_curve_tree_with_proof<
         &permissible_points, &sr_params, Some(depth));
     assert_eq!(curve_tree.height(), depth);
 
-    // derive the index where our pubkey is in the list:
-    let key_index: usize;
-    match permissible_points.iter().position(|&x| x  == our_pubkey) {
-        None => panic!("provided pubkey not found in the set"),
-        Some(ks) => {
-            key_index = ks;
-        },
-    }
     let (path_commitments, rand_scalar) =
     curve_tree.select_and_rerandomize_prover_gadget(
-        key_index,
+        key_index.try_into().unwrap(),
         &mut p0_prover,
         &mut p1_prover,
         &sr_params,
         &mut rng,
     );
+    // as well as the randomness in the blinded commitment, we also need to use the same
+    // blinding base:
+    let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
+    // The randomness for the PedDLEQ proof will have to be the randomness
+    // used in the curve tree randomization, *plus* the randomness that was used
+    // to convert P to a permissible point, upon initial insertion into the tree.
+    let mut r_offset: P0::ScalarField = P0::ScalarField::zero();
+    let lcindex: usize = key_index.try_into().unwrap();
+    let mut p_prime: Affine<P0> = leaf_commitments[lcindex];
+    // TODO: this is basically repeating what's already done in
+    // sr_params creation, but I don't know how else to extract the number
+    // of H bumps that were done (and we need to, see previous comment).
+    while !sr_params.even_parameters.uh.is_permissible(p_prime) {
+        p_prime = (p_prime + b_blinding).into();
+        r_offset += P0::ScalarField::one();
+    }
     // print the root of the curve tree.
     // TODO: how to allow the return value to be either
     // Affine<P0> or Affine<P1>? And as a consequence,
@@ -107,16 +132,15 @@ pub fn get_curve_tree_with_proof<
         // derp, see above TODO
         panic!("Wrong root parity, should be even");
     }
-    // as well as the randomness in the blinded commitment, we also need to use the same
-    // blinding base:
-    let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
     let p0_proof = p0_prover
         .prove(&sr_params.even_parameters.bp_gens)
         .unwrap();
     let p1_proof = p1_prover
         .prove(&sr_params.odd_parameters.bp_gens)
         .unwrap();
-    (p0_proof, p1_proof, path_commitments, rand_scalar, b_blinding, root)
+    let returned_rand = rand_scalar + r_offset;
+    (p0_proof, p1_proof, path_commitments,
+     returned_rand, b_blinding, root, privkey_parity_flip)
 }
 
 pub fn main(){
@@ -130,9 +154,9 @@ pub fn main(){
     // must convert. TODO relegate to utils for dedup.
     let mut privle = hex::decode(privhex).expect("hex decode failed");
     privle.reverse();
-    let x = F::deserialize_compressed(&privle[..]).unwrap();
+    let mut x = F::deserialize_compressed(&privle[..]).unwrap();
     let (G, J) = get_generators::<SecpBase, SecpConfig>();
-    let P = G.mul(x).into_affine();
+    let mut P = G.mul(x).into_affine();
     print_affine_compressed(P, "our pubkey");
 
     let filepath = &args[2];
@@ -141,12 +165,22 @@ pub fn main(){
         path,
     r,
     H,
-    root) = get_curve_tree_with_proof::<
+    root,
+    privkey_parity_flip) = get_curve_tree_with_proof::<
     256,
     SecpBase,
     SecpConfig,
     SecqConfig>(
             2, 11, filepath, P);
+    // if we could only find our pubkey in the list by flipping
+    // the sign of our private key (this is because the BIP340 compression
+    // logic is different from that in ark-ec; a TODO is to remove this
+    // confusion by having the BIP340 logic in this code):
+    if privkey_parity_flip {
+        x = -x;
+        P = -P;
+    }
+    print_affine_compressed(P, "P after flipping");
     // next steps create the Pedersen DLEQ proof for this key:
     //
     // blinding factor for Pedersen
@@ -198,6 +232,5 @@ pub fn main(){
     root.serialize_compressed(&mut buf2).unwrap();
     write_file_string("proof.txt", buf2);
     println!("Proof generated successfully and wrote to proof.txt. Size was {}", total_size);
-    //println!("The root of the tree is: ");
     print_affine_compressed(root, "root");
 }

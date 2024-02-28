@@ -117,7 +117,7 @@ pub mod rpc {
                 Err(_x) => return Ok(-1),
             };
             println!("Elapsed time for verify_curve_tree_proof: {:.2?}", timer1.elapsed());
-            if claimed_D_result != D {
+            if claimed_D_result != D && claimed_D_result != -D {
                 println!("Curve tree proof did not match PedDLEQ proof");
                 Ok(-1)
             }

@@ -83,8 +83,6 @@ pub fn verify_curve_tree_proof<
         Ok(rest) => rest,
         Err(rest) => return Err(rest),
     };
-    //assert_eq!(secq_res, secp_res);
-    //assert_eq!(secq_res, Ok(()));
     println!("Elapsed time for verifier calls: {:.2?}", before.elapsed());
 
     // check also that the path's first node matches the root of the tree that we
