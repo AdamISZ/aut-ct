@@ -1,7 +1,7 @@
-Anonymous usage tokens from curve trees (WIP)
+Anonymous usage tokens from curve trees
 =====
 
-(Caveat: read the section "Caveat", please. Also, this is not quite finished, hence "WIP", see details at the end.)
+(Caveat: read the section "Caveat", please.)
 
 If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to "Installation" and then "Worked Example".
 
@@ -40,7 +40,7 @@ git clone https://github.com/AdamISZ/aut-ct
 Running
 ===
 
-Build the project with `cargo build --release` (without release flag, the debug version is very slow), then the binaries are in `curve-trees/target/release`. There are three binaries, `autct`, `rpcclient`, `rpcserver`. Taking each in turn:
+Build the project with `cargo build --release` (without release flag, the debug version is very slow), then the binaries are in `aut-ct/target/release`. There are three binaries, `autct`, `rpcclient`, `rpcserver`. Taking each in turn:
 
 `autct`:
 
@@ -68,9 +68,7 @@ This client connects to the above server (port 23333 locally currently) and call
 
 In the directory `testdata` there is an example pubkey file containing approximately 48000 pubkeys taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. The private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `a496230673e00ed72abe37b9acd01763620f918e5618df4d0db1377d0d8ba72d80`. 
 
-Additionally the depth and branching factors of the Curve Tree are still hard coded (2, 256 respectively); obviously this can be mode configurable.
-
-Yes, this is still very primitive for now, a proof of concept.
+Additionally the depth and branching factors of the Curve Tree are still hard coded (2, 256 respectively); obviously this can be mode configurable. As per the TODO section below, this still needs a lot of work to be really useful.
 
 Worked Example
 ==========================
@@ -108,5 +106,4 @@ Output of rpcclient should be just `1` for successful verification. Any negative
 TODO
 ===
 
-Address how we handle empty/null values at the leaf level. Address conversion of leaves to permissible points (where necessary). Tests of the PedDLEQ primitive. A set of test vectors. User choice of tree parameters (depth, height), and/or choice of parameters depending on data set. Ability to enter secret key in a safer way than on the command line(!), as well as many other security considerations. Proper command line arguments, help messages etc. Standard format for inputting keys, perhaps a bolt on tool to take data from Bitcoin blocks and convert to a more compact format for public keys. Need to solve the question of how to make the universal hashing for permissible points be deterministic (see patch above).
-
+Address how we handle empty/null values at the leaf level. Tests of the PedDLEQ primitive. A set of test vectors. Inclusion of domain-specific strings (customisable) to the challenge hash. User choice of tree parameters (depth, height), and/or choice of parameters depending on data set. Ability to enter secret key in a safer way than on the command line(!), as well as many other security considerations. Proper command line arguments, help messages etc. Standard format for inputting keys, perhaps a bolt on tool to take data from Bitcoin blocks and convert to a more compact format for public keys.
