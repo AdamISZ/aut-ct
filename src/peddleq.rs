@@ -3,6 +3,7 @@ extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
 
+use crate::print_field_elem_hex;
 use crate::utils;
 
 use alloc::vec::Vec;
@@ -77,13 +78,12 @@ impl TranscriptProtocol for Transcript {
     fn challenge_scalar<C: AffineRepr>(&mut self, label: &'static [u8]) -> C::ScalarField {
         extern crate crypto;
         use crypto::digest::Digest;
-        // TODO: switch to SHA2
-        //use crypto::sha3::Sha3;
         use crypto::sha2::Sha256;
 
         let mut bytes = [0u8; 64];
         self.challenge_bytes(label, &mut bytes);
-
+        // this is just a boilerplate conversion from
+        // a hash output to a valid scalar in the field
         for i in 0..=u8::max_value() {
             let mut sha = Sha256::new();
             sha.input(&bytes);
@@ -125,6 +125,8 @@ impl<C: AffineRepr> PedDleqProof<C> {
         G: &C,
         H: &C,
         J: &C,
+        sarg: Option<C::ScalarField>,
+        targ: Option<C::ScalarField>,
     ) -> PedDleqProof<C> {
         // TODO, fix up transcript fields
         transcript.ped_dleq_proof_domain_sep(1);
@@ -141,8 +143,8 @@ impl<C: AffineRepr> PedDleqProof<C> {
         //Step 1
         // Construct blinding factors using an RNG.
         let mut rng = rand::thread_rng();
-        let s = C::ScalarField::rand(&mut rng);
-        let t = C::ScalarField::rand(&mut rng);
+        let s = sarg.unwrap_or(C::ScalarField::rand(&mut rng));
+        let t = targ.unwrap_or(C::ScalarField::rand(&mut rng));
         //Step 2
         let P = commit(s, t, G, H);
         transcript.append_point(b"1", &P);
@@ -159,7 +161,6 @@ impl<C: AffineRepr> PedDleqProof<C> {
         let sigma1 = s + (*x)*e;
         // Step 5
         let sigma2 = t + (*r)*e;
-        //println!("Here is R1,R2 in the proof creator: {},\t {}", P, Q);
         PedDleqProof {
             R1: P.clone(),
             R2: Q.clone(),
@@ -263,4 +264,131 @@ impl<C: AffineRepr> CanonicalDeserialize for PedDleqProof<C> {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::utils::*;
+    use super::*;
+    extern crate hex;
+    extern crate ark_secp256k1;
+    use serde_json::from_str;
+    use std::{fs::File, io::Cursor};
+    use std::io::Read;
+    use std::ops::{Mul, Add};
+    use serde::{Deserialize, Serialize};
+    use ark_ec::{AffineRepr, CurveGroup};
+    use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
+    use ark_ec::short_weierstrass::Affine;
+    //use ark_serialize::{CanonicalDeserialize};
+    // recipe from:
+    // https://stackoverflow.com/questions/70615096/deserialize-json-list-of-hex-strings-as-bytes
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(transparent)]
+    struct MyHex {
+        #[serde(with = "hex::serde")]
+        hex: Vec<u8>,
+    }
+    /* Structure of test vectors is:
+    (see https://github.com/AdamISZ/aut-ct-test-cases/blob/master/src/peddleq.py )
+    "case" : str(i),
+                    "privkey": hexer(priv),
+                    "r": get_rev_bytes(hexer(r), "hex"),
+                    "s": get_rev_bytes(hexer(s), "hex"),
+                    "t": hexer(get_rev_bytes(hexer(t))),
+                    "pc": hexer(convert_to_ark_compressed(pc)),
+                    "ki": hexer(convert_to_ark_compressed(ki)),
+                    "R1": hexer(convert_to_ark_compressed(R1)),
+                    "R2": hexer(convert_to_ark_compressed(R2)),
+                    "sigma1": get_rev_bytes(hexer(sigma1), "hex"),
+                    "sigma2": get_rev_bytes(hexer(sigma2), "hex"),
+                    "e": hexer(get_challenge(R1, R2, pc, ki).to_bytes())}
+     */
+    #[derive(Serialize, Deserialize)]
+    pub struct PedDLEQTestCase {
+        case: String, // name/identifier for test case
+        privkey: MyHex,
+        r: MyHex, // pedersen commitment randomness, "imported" from curve tree proof
+        s: MyHex, // "value" portion of commitment for ZkPoK
+        t: MyHex, // "blinding" portion of commitment for ZkPoK
+        pc: MyHex, // pedersen commitment (point)
+        ki: MyHex, // key image
+        R1: MyHex, // commitment for ZkPoK (over G)
+        R2: MyHex, // commitment for ZkPoK (over J)
+        sigma1: MyHex, // sigma protocol response element 1
+        sigma2: MyHex, // sigmal protocol response element 2
+        e: MyHex, // challenge hash of sigma protocol (sha2 of PRF from STROBE)
+    }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct PedDLEQTestCaseList {
+        cases: Vec<PedDLEQTestCase>,
+    }
+
+    #[test]
+    fn run_test_cases() {
+        type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
+        let mut file = File::open("testdata/testcases.json").unwrap();
+        let mut data = String::new();
+        file.read_to_string(&mut data).unwrap();
+        let value: Vec<PedDLEQTestCase> = from_str::<Vec<PedDLEQTestCase>>(&data).unwrap();
+        // calculate generators G, H, J for all the cases, first:
+        let (G, J) = get_generators::<SecpBase, SecpConfig>();
+        // this is the default H value in curve_trees; could re-derive but pulls in unnecessary deps:
+        let Hhex = "87163d621f520cca22c42466af3b046475db26a1177166ba51eac76fc31dc35680".to_string();
+        let Hbin = hex::decode(&Hhex).unwrap();
+        let mut cursor = Cursor::new(Hbin);
+        let H = Affine::<SecpConfig>::deserialize_compressed(
+            &mut cursor).expect("Failed to deserialize H");
+        print_affine_compressed(H, "H decoded");
+        for case in value {
+            // TODO; why does the compiler try to force the return values
+            // into a scalar field of a (projective) config, so I have to force
+            // it to switch back to the field element?
+            let r = F::from(F::deserialize_compressed(&case.r.hex[..]).unwrap());
+            let x = F::from(F::deserialize_compressed(&case.privkey.hex[..]).unwrap());
+            print_field_elem_hex::<F>(&x, "x in the test");
+            let P = G.mul(x).into_affine();
+            let s = F::from(F::deserialize_compressed(&case.s.hex[..]).unwrap());
+            let t = F::from(F::deserialize_compressed(&case.t.hex[..]).unwrap());
+            // first, reconstruct D and E from the given inputs and check it corresponds
+            // to the data given in the test vector(fields "pc" and "ki").
+            // Then, construct the proof, giving values to the optional arguments,
+            // s and t (instead of them being chosen at random, here).
+            // Finally compare the proof outputs R1, R2, sigma1, sigma2 and e, with
+            // those in the test vector.
+            let D = P.add(H.mul(r)).into_affine();
+            let E = J.mul(x).into_affine();
+            let mut transcript = Transcript::new(b"ped-dleq-test");
+            let proof = PedDleqProof::create(
+            &mut transcript,
+            &D,
+            &E,
+            &x,
+            &r,
+            &G,
+            &H,
+            &J,
+            Some(s),
+            Some(t),
+            );
+            // TODO wrap these up to remove the repetition:
+            let mut b = Vec::new();
+            proof.R1.serialize_compressed(&mut b).expect("Failed to serialize point");
+            assert_eq!(b, case.R1.hex[..]);
+            let mut bR2 = Vec::new();
+            proof.R2.serialize_compressed(&mut bR2).expect("Failed to serialize point");
+            assert_eq!(bR2, case.R2.hex[..]);
+            let mut bs1 = Vec::new();
+            proof.sigma1.serialize_compressed(&mut bs1).expect("Failed to serialize sigma1");
+            assert_eq!(bs1, case.sigma1.hex[..]);
+            let mut bs2 = Vec::new();
+            proof.sigma2.serialize_compressed(&mut bs2).expect("Failed to serialize sigma2");
+            assert_eq!(bs2, case.sigma2.hex[..]);
+
+
+        }
+
+    }
+}
+
 

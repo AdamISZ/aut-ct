@@ -13,7 +13,7 @@ use alloc::vec::Vec;
 use ark_ec::{AffineRepr, short_weierstrass::SWCurveConfig, CurveGroup};
 use ark_ff::{PrimeField, Zero, One};
 use ark_serialize::{
-    CanonicalSerialize, CanonicalDeserialize, Compress};
+    CanonicalSerialize, Compress};
 use relations::curve_tree::{SelRerandParameters, CurveTree, SelectAndRerandomizePath};
 use std::env;
 use std::ops::{Mul, Add};
@@ -143,19 +143,16 @@ pub fn get_curve_tree_with_proof<
      returned_rand, b_blinding, root, privkey_parity_flip)
 }
 
+
 pub fn main(){
 
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     let args: Vec<String> = env::args().collect();
     // read privkey from command line (TODO, use a file)
     let privhex = &args[1];
-
-    // all the encodings in the ark-ff stuff is LE, so we
-    // must convert. TODO relegate to utils for dedup.
-    let mut privle = hex::decode(privhex).expect("hex decode failed");
-    privle.reverse();
-    let mut x = F::deserialize_compressed(&privle[..]).unwrap();
+    let mut x = decode_hex_le_to_F::<F>(privhex);
     let (G, J) = get_generators::<SecpBase, SecpConfig>();
+    print_affine_compressed(J, "J");
     let mut P = G.mul(x).into_affine();
     print_affine_compressed(P, "our pubkey");
 
@@ -199,6 +196,8 @@ pub fn main(){
             &G,
             &H,
             &J,
+            None,
+            None,
     );
     let mut buf = Vec::with_capacity(proof.serialized_size(Compress::Yes));
     proof.serialize_compressed(&mut buf).unwrap();

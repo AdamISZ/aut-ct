@@ -12,12 +12,28 @@ use std::fs;
 use ark_serialize::CanonicalSerialize;
 use relations::curve_tree::SelRerandParameters;
 
+// Given a hex string of big-endian encoding,
+// first change to little endian bytes and then deserialize
+// it as a field element
+pub fn decode_hex_le_to_F<F: PrimeField>(s: &String) -> F{
+    let mut x = hex::decode(s).expect("hex decode failed");
+    x.reverse();
+    F::deserialize_compressed(&x[..]).unwrap()
+}
+
+pub fn print_field_elem_hex<F: PrimeField>(x: &F, name: &str) {
+    let mut b = Vec::new();
+    x.serialize_compressed(&mut b).expect("Failed to serialize field element");
+    println!("This is the value of {}: {:#?}", name, hex::encode(&b));
+}
+
 pub fn print_affine_compressed<F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy>(pt: Affine<P0>, name: &str) {
     let mut b = Vec::new();
         pt.serialize_compressed(&mut b).expect("Failed to serialize point");
     println!("This is the value of {}: {:#?}", name, hex::encode(&b));
 }
+
 // protocol requires three generators G, H, J:
 // update: H will be gotten from the CurveTree rerandomization,
 // so now only returning G, J

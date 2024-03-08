@@ -19,9 +19,11 @@ ark-crypto-primitives = { version = "0.4.0", features = ["signature"]}
 digest = "0.9"
 blake2 = "0.10"
 rayon = {version = "1.5.3", optional = true}
-hex = "0.4.3"
+hex = {version ="0.4.3", features = ["serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 toy-rpc = { version = "0.8.1", features = ["tokio_runtime", "server", "client"] }
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 [dev-dependencies]
 criterion = "0.3"
 
