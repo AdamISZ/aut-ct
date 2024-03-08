@@ -13,7 +13,7 @@ Anonymous usage tokens from curve trees
 
 (Caveat: read the [caveat](#caveat), please.)
 
-If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to [Installation](#installing) and then [Worked Example](#worked Example).
+If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to [Installation](#installing) and then [Worked Example](#worked-example).
 
 Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short (sub second at least) so that it can be used practically in real systems.
 
@@ -49,7 +49,19 @@ Check if it's working with
 cargo test
 ```
 
-from inside the repository.
+from inside the repository. If there are no errors, you are good to go.
+
+If you see an error like:
+
+```
+linker `cc` not found
+```
+
+... e.g., on Debian, your Rust installation is not functioning because it doesn't have the C compiler toolchain. This should fix it:
+
+```
+sudo apt install build-essentials
+```
 
 # Running
 
@@ -85,25 +97,25 @@ Additionally the depth and branching factors of the Curve Tree are still hard co
 
 # Worked Example
 
-Compute the proof:
+Compute the proof (paths here assume you are in the root of the repository):
 
 ```
 target/release/autct \
      373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf \
-     aut-ct/testdata/signet-pubkeys-85000-155000.txt
+     testdata/signet-pubkeys-85000-155000.txt
 ```
 
 Start the RPC server (port number currently hardcoded to 23333):
 
 ```
 target/release/rpcserver \
-aut-ct/testdata/signet-pubkeys-85000-155000.txt
+testdata/signet-pubkeys-85000-155000.txt
 ```
 
 Make a request from the rpc client, to verify the proof:
 
 ```
-target/release/rpcclient aut-ct/testdata/signet-pubkeys-85000-155000.txt \
+target/release/rpcclient testdata/signet-pubkeys-85000-155000.txt \
 proof.txt
 ```
 
@@ -115,9 +127,12 @@ Verifying curve tree passed and it matched the key image.
 
 Output of rpcclient should be just `1` for successful verification. Any negative number means the proof is not valid for the given Curve Tree.
 
+(Process currently verified working on Ubuntu 22.04 and Debian 12)
+
 # Testing
 
-See more info [here](./testdata/README.md).
+See more info [here](./testdata/README.md). 
+
 # TODO
 
 Inclusion of domain-specific strings (customisable) to the challenge hash. User choice of tree parameters (depth, height), and/or choice of parameters depending on data set. Ability to enter secret key in a safer way than on the command line(!), as well as many other security considerations. Proper command line arguments, help messages etc. Standard format for inputting keys, perhaps a bolt-on tool to take data from Bitcoin blocks and convert to a more compact format for public keys (binary instead of current hex).
