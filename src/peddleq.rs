@@ -3,7 +3,6 @@ extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
 
-use crate::print_field_elem_hex;
 use crate::utils;
 
 use alloc::vec::Vec;
@@ -91,6 +90,8 @@ impl TranscriptProtocol for Transcript {
             let mut buf = [0u8; 32];
 
             sha.result(&mut buf);
+            // hash output is BE but field element conversion is LE:
+            buf.reverse();
             let res = <C::ScalarField as Field>::from_random_bytes(&buf);
 
             if let Some(scalar) = res {
@@ -173,10 +174,6 @@ impl<C: AffineRepr> PedDleqProof<C> {
         transcript: &mut Transcript,
         D: &C,
         E: &C,
-        //sigma1: &C::ScalarField,
-        //sigma2: &C::ScalarField,
-        //R1: &C,
-        //R2: &C,
         G: &C,
         H: &C,
         J: &C,
@@ -191,7 +188,6 @@ impl<C: AffineRepr> PedDleqProof<C> {
         transcript.append_point(b"4", E);
         let e =
         transcript.challenge_scalar::<C>(b"e");
-
         // checks:
         // sigma1 G + sigma_2 H = R1 + e*D
         // sigma2 J = R2 + e*E
@@ -346,7 +342,6 @@ mod tests {
             // it to switch back to the field element?
             let r = F::from(F::deserialize_compressed(&case.r.hex[..]).unwrap());
             let x = F::from(F::deserialize_compressed(&case.privkey.hex[..]).unwrap());
-            print_field_elem_hex::<F>(&x, "x in the test");
             let P = G.mul(x).into_affine();
             let s = F::from(F::deserialize_compressed(&case.s.hex[..]).unwrap());
             let t = F::from(F::deserialize_compressed(&case.t.hex[..]).unwrap());
@@ -358,6 +353,12 @@ mod tests {
             // those in the test vector.
             let D = P.add(H.mul(r)).into_affine();
             let E = J.mul(x).into_affine();
+            let mut bD = Vec::new();
+            D.serialize_compressed(&mut bD).expect("Failed to serialize point");
+            assert_eq!(bD, case.pc.hex[..]);
+            let mut bE = Vec::new();
+            E.serialize_compressed(&mut bE).expect("Failed to serialize point");
+            assert_eq!(bE, case.ki.hex[..]);
             let mut transcript = Transcript::new(b"ped-dleq-test");
             let proof = PedDleqProof::create(
             &mut transcript,
