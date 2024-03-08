@@ -1,9 +1,19 @@
 Anonymous usage tokens from curve trees
 =====
 
-(Caveat: read the section "Caveat", please.)
+### Table of Contents
+* [Introduction](#introduction)
+* [Caveat](#caveat)
+* [Installing](#installing)
+* [Worked Example](#worked-example)
+* [Running](#running)
+* [Testing](#testing)
 
-If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to "Installation" and then "Worked Example".
+# Introduction
+
+(Caveat: read the [caveat](#caveat), please.)
+
+If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to [Installation](#installing) and then [Worked Example](#worked Example).
 
 Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short (sub second at least) so that it can be used practically in real systems.
 
@@ -17,15 +27,13 @@ That construction is not quite enough for usage of ownership of public keys as t
 
 This "key image" approach can be implemented as described here in this repo, in [this document](./aut-ct.pdf). It's a simple additional ZK proof of knowledge of the opening of a Pedersen commitment, tied to a key image, using completely standard Sigma protocol techniques.
 
-Caveat
-==
+# Caveat
 
 **Everything here is completely experimental and not safe in any way** (not helped by the fact I am a neophyte in Rust!). Importantly, even the underlying Curve Trees code was *only* written as a benchmarking tool, and therefore even that is not safe to use in anything remotely resembling a production environment.
 
 If you choose to play around with this stuff for Bitcoin projects I suggest using signet for now.
 
-Installation
-==
+# Installing
 
 Set up Rust, if you haven't, using [rustup](https://rustup.rs/).
 
@@ -35,10 +43,15 @@ Install this project:
 git clone https://github.com/AdamISZ/aut-ct
 ```
 
+Check if it's working with
 
+```
+cargo test
+```
 
-Running
-===
+from inside the repository.
+
+# Running
 
 Build the project with `cargo build --release` (without release flag, the debug version is very slow), then the binaries are in `aut-ct/target/release`. There are three binaries, `autct`, `rpcclient`, `rpcserver`. Taking each in turn:
 
@@ -48,7 +61,7 @@ Build the project with `cargo build --release` (without release flag, the debug 
 ./autct 37......cf somepubkeys.txt
 ```
 
-The prover provides a hex-encoded 32 byte string, as private key, as first argument, then a plaintext file with a list of pubkeys, compressed, hex encoded, separated by whitespace, all on one line. The output is `proof.txt`, which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file, in order to identify the correct index to use in the proof.
+The prover provides a hex-encoded 32 byte string, as private key, as first argument, then a plaintext file with a list of pubkeys, compressed, hex encoded, separated by whitespace, all on one line. The output is, for now, hardcoded to output to a file in the current directory called `proof.txt`, which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file, in order to identify the correct index to use in the proof.
 
 `rpcserver`:
 
@@ -68,10 +81,9 @@ This client connects to the above server (port 23333 locally currently) and call
 
 In the directory `testdata` there is an example pubkey file containing approximately 48000 pubkeys taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. The private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `a496230673e00ed72abe37b9acd01763620f918e5618df4d0db1377d0d8ba72d80`. 
 
-Additionally the depth and branching factors of the Curve Tree are still hard coded (2, 256 respectively); obviously this can be mode configurable. As per the TODO section below, this still needs a lot of work to be really useful.
+Additionally the depth and branching factors of the Curve Tree are still hard coded (2, 256 respectively); obviously this can (and will, in future) be mode configurable.
 
-Worked Example
-==========================
+# Worked Example
 
 Compute the proof:
 
@@ -81,7 +93,7 @@ target/release/autct \
      aut-ct/testdata/signet-pubkeys-85000-155000.txt
 ```
 
-Start the RPC server (defaults to port 23333):
+Start the RPC server (port number currently hardcoded to 23333):
 
 ```
 target/release/rpcserver \
@@ -103,7 +115,9 @@ Verifying curve tree passed and it matched the key image.
 
 Output of rpcclient should be just `1` for successful verification. Any negative number means the proof is not valid for the given Curve Tree.
 
-TODO
-===
+# Testing
 
-Address how we handle empty/null values at the leaf level. Tests of the PedDLEQ primitive. A set of test vectors. Inclusion of domain-specific strings (customisable) to the challenge hash. User choice of tree parameters (depth, height), and/or choice of parameters depending on data set. Ability to enter secret key in a safer way than on the command line(!), as well as many other security considerations. Proper command line arguments, help messages etc. Standard format for inputting keys, perhaps a bolt on tool to take data from Bitcoin blocks and convert to a more compact format for public keys.
+See more info [here](./testdata/README.md).
+# TODO
+
+Inclusion of domain-specific strings (customisable) to the challenge hash. User choice of tree parameters (depth, height), and/or choice of parameters depending on data set. Ability to enter secret key in a safer way than on the command line(!), as well as many other security considerations. Proper command line arguments, help messages etc. Standard format for inputting keys, perhaps a bolt-on tool to take data from Bitcoin blocks and convert to a more compact format for public keys (binary instead of current hex).
