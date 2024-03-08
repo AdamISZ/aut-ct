@@ -1,7 +1,15 @@
 TEST DATA
 =======
 
-This is a holding area for various keysets for testing. More will be added, probably building out a set of test vectors for the proofs.
+Test vectors
+
+Currently there is a single json file `testcases.json` of 10 test cases for the Pedersen-DLEQ primitive. In each one is stored a transcript of all the data used to construct the proof as hex values. For more details see `run_test_cases` in `src/peddleq.rs`.
+
+For how the test vectors in `testcases.json` were constructed, or to make new test cases, see the details in [this repo](https://github.com/AdamISz/aut-ct-test-cases). In future this repo may be extended to creating tools to create key sets as described next:
+
+Key sets
+
+This is a holding area for various keysets for testing. More will be added.
 
 There is a large set of 48000 (approx) public keys derived from signet, taproot outputs, generated from the range of blocks indicated.
 
