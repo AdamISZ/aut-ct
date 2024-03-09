@@ -64,6 +64,8 @@ pub fn get_curve_tree_with_proof<
     let leaf_commitments = get_leaf_commitments::<F, P0>(pubkey_file_path);
     // derive the index where our pubkey is in the list:
     let mut key_index: i32; // we're guaranteed to overwrite or panic but the compiler insists.
+    // the reason for 2 rounds of search is that BIP340 can output a different parity
+    // compared to ark-ec 's compression algo.
     key_index = match leaf_commitments.iter().position(|&x| x  == our_pubkey) {
         None => -1,
         Some(ks) => ks.try_into().unwrap()
@@ -72,15 +74,12 @@ pub fn get_curve_tree_with_proof<
         key_index = match leaf_commitments.iter().position(|&x| x == -our_pubkey) {
             None => panic!("provided pubkey not found in the set"),
             Some(ks) => {
-                //print_affine_compressed(leaf_commitments[ks], "P in leaf commitments set");
                 privkey_parity_flip = true;
                 ks.try_into().unwrap()
             }
         }
     };
-    // the conversion to permissible needs to be deterministic.
-    // TODO: figure out how to do the Universal Hash step without random values
-    // (for now, we have edited the underlying universal hash code to accommodate this)
+
     let (permissible_points, _permissible_randomnesses) =
         create_permissible_points_and_randomnesses::<F, P0, P1>(&leaf_commitments, &sr_params);
 
@@ -186,7 +185,7 @@ pub fn main(){
     let D = P.add(rH).into_affine();
     // the key image (E) is xJ
     let E = J.mul(x).into_affine();
-    let mut transcript = Transcript::new(b"ped-dleq-test");
+    let mut transcript = Transcript::new(APP_DOMAIN_LABEL);
     let proof = PedDleqProof::create(
             &mut transcript,
             &D,
@@ -202,7 +201,7 @@ pub fn main(){
     let mut buf = Vec::with_capacity(proof.serialized_size(Compress::Yes));
     proof.serialize_compressed(&mut buf).unwrap();
 
-        let mut verifier = Transcript::new(b"ped-dleq-test");
+        let mut verifier = Transcript::new(APP_DOMAIN_LABEL);
         assert!(proof
             .verify(
                 &mut verifier,
@@ -230,6 +229,6 @@ pub fn main(){
     path.serialize_compressed(&mut buf2).unwrap();
     root.serialize_compressed(&mut buf2).unwrap();
     write_file_string("proof.txt", buf2);
-    println!("Proof generated successfully and wrote to proof.txt. Size was {}", total_size);
+    println!("Proof generated successfully and written to proof.txt. Size was {}", total_size);
     print_affine_compressed(root, "root");
 }

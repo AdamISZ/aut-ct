@@ -119,10 +119,15 @@ target/release/rpcclient testdata/signet-pubkeys-85000-155000.txt \
 proof.txt
 ```
 
-Ouput log in rpcserver terminal should contain:
+Ouput log in rpcserver terminal should look similar to this:
 
 ```
-Verifying curve tree passed and it matched the key image.
+Elapsed time for selrerand paramater generation: 58.00ns
+Elapsed time for verifier gadget call: 2.15ms
+Elapsed time for verifier calls: 46.28ms
+Root is odd? false
+Elapsed time for verify_curve_tree_proof: 49.00ms
+Verifying curve tree passed and it matched the key image. Here is the key image: "a496230673e00ed72abe37b9acd01763620f918e5618df4d0db1377d0d8ba72d80"
 ```
 
 Output of rpcclient should be just `1` for successful verification. Any negative number means the proof is not valid for the given Curve Tree.

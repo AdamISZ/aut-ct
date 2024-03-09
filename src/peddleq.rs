@@ -16,9 +16,10 @@ use ark_std::UniformRand;
 use std::ops::Add;
 use merlin::Transcript;
 
-
+const PEDDLEQ_PROTOCOL_LABEL: &[u8] = b"peddleqproof";
+const PEDDLEQ_PROTOCOL_VERSION: u64 = 1;
 pub trait TranscriptProtocol {
-    fn ped_dleq_proof_domain_sep(&mut self, n: u64);
+    fn ped_dleq_proof_domain_sep(&mut self);
 
     /// Append a `scalar` with the given `label`.
     fn append_scalar<C: AffineRepr>(&mut self, label: &'static [u8], scalar: &C::ScalarField);
@@ -40,9 +41,11 @@ pub trait TranscriptProtocol {
 
 impl TranscriptProtocol for Transcript {
 
-    fn ped_dleq_proof_domain_sep(&mut self, n: u64) {
-        self.append_message(b"dom-sep", b"peddleqproof");
-        self.append_u64(b"n", n);
+    fn ped_dleq_proof_domain_sep(&mut self) {
+        self.append_message(b"dom-sep", PEDDLEQ_PROTOCOL_LABEL);
+        // I  guess this is best applied for versioning.
+        // On the other hand, perhaps just remove it?
+        self.append_u64(b"n", PEDDLEQ_PROTOCOL_VERSION);
     }
 
     fn append_scalar<C: AffineRepr>(&mut self, label: &'static [u8], scalar: &C::ScalarField) {
@@ -129,8 +132,8 @@ impl<C: AffineRepr> PedDleqProof<C> {
         sarg: Option<C::ScalarField>,
         targ: Option<C::ScalarField>,
     ) -> PedDleqProof<C> {
-        // TODO, fix up transcript fields
-        transcript.ped_dleq_proof_domain_sep(1);
+
+        transcript.ped_dleq_proof_domain_sep();
         // Step 1: create random scalars s, t
         // Step 2: create "commitment" = sG + tH
         // Step 2b: create "commitment" = sJ
@@ -179,9 +182,9 @@ impl<C: AffineRepr> PedDleqProof<C> {
         J: &C,
     ) -> Result<(), &str>
     {
-        //println!("Here is R1,R2 in the proof verifier: {},\t {}", self.R1, self.R2);
+
         //form correct hash challenge
-        transcript.ped_dleq_proof_domain_sep(1);
+        transcript.ped_dleq_proof_domain_sep();
         transcript.append_point(b"1", &self.R1);
         transcript.append_point(b"2", &self.R2);
         transcript.append_point(b"3", D);
@@ -204,9 +207,9 @@ impl<C: AffineRepr> PedDleqProof<C> {
     }
     /// Returns the size in bytes required to serialize the ped-dleq proof
     pub fn serialized_size(&self, compress: Compress) -> usize {
-        // prof consists of 4 objects, two scalars sigma1, sigma2 and two points R1, R2.
-        // Note that both prover and verifier own P and C1 (blinded claimed tree entry)
-        // as well as G, H, J generators.
+        // proof consists of 4 objects, two scalars sigma1, sigma2 and two points R1, R2.
+        // Note that both prover and verifier own P and D (blinded claimed tree entry)
+        // as well as G, H, J generators and E(the key image).
         let scalars_size = self.sigma1.serialized_size(compress) * 2;
         // size of the 2 points
         let points_size = self.R1.serialized_size(compress) * 2;
@@ -223,16 +226,12 @@ impl<C: AffineRepr> CanonicalSerialize for PedDleqProof<C> {
     /// Returns the size in bytes required to serialize the ped-dleq proof
     /// TODO: Why is this copy-pasted from the struct function?
     fn serialized_size(&self, mode: Compress) -> usize {
-        // prof consists of 4 objects, two scalars sigma1, sigma2 and two points R1, R2.
-        // Note that both prover and verifier own P and C1 (blinded claimed tree entry)
-        // as well as G, H, J generators.
         let scalars_size = self.sigma1.serialized_size(mode) * 2;
-        // size of the 3 points
         let points_size = self.R1.serialized_size(mode) * 2;
         scalars_size + points_size
     }
 
-    /// Serializes the proof into a byte array of 4 32-byte elements.
+    /// Serializes the proof into a byte array of 4 32/33-byte elements.
     fn serialize_with_mode<W: Write>(
         &self,
         mut writer: W,
@@ -275,7 +274,6 @@ mod tests {
     use ark_ec::{AffineRepr, CurveGroup};
     use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
     use ark_ec::short_weierstrass::Affine;
-    //use ark_serialize::{CanonicalDeserialize};
     // recipe from:
     // https://stackoverflow.com/questions/70615096/deserialize-json-list-of-hex-strings-as-bytes
     #[derive(Serialize, Deserialize, Debug)]
@@ -335,7 +333,6 @@ mod tests {
         let mut cursor = Cursor::new(Hbin);
         let H = Affine::<SecpConfig>::deserialize_compressed(
             &mut cursor).expect("Failed to deserialize H");
-        print_affine_compressed(H, "H decoded");
         for case in value {
             // TODO; why does the compiler try to force the return values
             // into a scalar field of a (projective) config, so I have to force
@@ -359,7 +356,7 @@ mod tests {
             let mut bE = Vec::new();
             E.serialize_compressed(&mut bE).expect("Failed to serialize point");
             assert_eq!(bE, case.ki.hex[..]);
-            let mut transcript = Transcript::new(b"ped-dleq-test");
+            let mut transcript = Transcript::new(APP_DOMAIN_LABEL);
             let proof = PedDleqProof::create(
             &mut transcript,
             &D,

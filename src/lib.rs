@@ -79,7 +79,7 @@ pub mod rpc {
                     &mut cursor).expect("Failed to deserialize E");
             let proof = PedDleqProof::<Affine<SecpConfig>>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).unwrap();
-            let mut transcript = Transcript::new(b"ped-dleq-test");
+            let mut transcript = Transcript::new(APP_DOMAIN_LABEL);
             // TODO obv generators should be initialized on startup, but trivial cost:
             let (G, J) = get_generators();
             if !(proof
