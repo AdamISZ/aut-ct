@@ -41,15 +41,7 @@ pub fn verify_curve_tree_proof<
     p1proof: R1CSProof<Affine<P1>>,
     root: Affine<P0>,
 ) -> Result<Affine<P0>, R1CSError> {
-    // TODO we do *not* want to use randomness as input to the
-    // universal hash function for permissible points, since that precludes
-    // people independently creating the same tree of permissible points.
-    //let mut rng = rand::thread_rng();
-    //let generators_length = 1 << generators_length_log_2;
     let timer2 = Instant::now();
-    //let sr_params =
-    //    SelRerandParameters::<P0, P1>::new(
-    //        generators_length, generators_length, &mut rng);
     println!("Elapsed time for selrerand paramater generation: {:.2?}", timer2.elapsed());
     let secp_transcript = Transcript::new(b"select_and_rerandomize");
     let mut secp_verifier = Verifier::new(secp_transcript);

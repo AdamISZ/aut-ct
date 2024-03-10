@@ -5,7 +5,7 @@ extern crate alloc;
 extern crate ark_secp256k1;
 
 use autct::utils::*;
-
+use autct::config::AutctConfig;
 use autct::peddleq::PedDleqProof;
 use bulletproofs::r1cs::R1CSProof;
 use bulletproofs::r1cs::Prover;
@@ -147,6 +147,7 @@ pub fn main(){
 
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     let args: Vec<String> = env::args().collect();
+    let autctcfg: AutctConfig = confy::load("autct", None).expect("Config failed to load");
     // read privkey from command line (TODO, use a file)
     let privhex = &args[1];
     let mut x = decode_hex_le_to_F::<F>(privhex);
@@ -163,11 +164,13 @@ pub fn main(){
     H,
     root,
     privkey_parity_flip) = get_curve_tree_with_proof::<
-    256,
+    {BRANCHING_FACTOR},
     SecpBase,
     SecpConfig,
     SecqConfig>(
-            2, 11, filepath, P);
+            autctcfg.depth.try_into().unwrap(),
+            autctcfg.generators_length_log_2.try_into().unwrap(),
+            filepath, P);
     // if we could only find our pubkey in the list by flipping
     // the sign of our private key (this is because the BIP340 compression
     // logic is different from that in ark-ec; a TODO is to remove this

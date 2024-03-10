@@ -3,6 +3,7 @@
 pub mod peddleq;
 pub mod utils;
 pub mod autctverifier;
+pub mod config;
 
 extern crate rand;
 extern crate alloc;
@@ -34,7 +35,7 @@ pub mod rpc {
     pub struct RPCProofVerifier{
         pub pubkey_filepath: String,
         pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
-        pub curve_tree: CurveTree<256, SecpConfig, SecqConfig>,
+        pub curve_tree: CurveTree<{BRANCHING_FACTOR}, SecpConfig, SecqConfig>,
         pub H: Affine<SecpConfig>
     }
     #[export_impl]
@@ -103,7 +104,7 @@ pub mod rpc {
             R1CSProof::<Affine<SecqConfig>>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).expect("Failed p1proof deserialize");
             let path = 
-            SelectAndRerandomizePath::<256, SecpConfig, SecqConfig>::deserialize_with_mode(
+            SelectAndRerandomizePath::<{BRANCHING_FACTOR}, SecpConfig, SecqConfig>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).expect("failed path deserialize");
 
             // TODO this is part of the 'can we handle different root parity' problem:

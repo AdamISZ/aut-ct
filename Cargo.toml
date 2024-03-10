@@ -24,8 +24,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 toy-rpc = { version = "0.8.1", features = ["tokio_runtime", "server", "client"] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-[dev-dependencies]
-criterion = "0.3"
+serde_derive = "1.0"
+confy = "^0.5"
+
 
 [[bin]]
 name = "autct"

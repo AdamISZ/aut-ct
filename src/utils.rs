@@ -15,6 +15,7 @@ use relations::curve_tree::SelRerandParameters;
 // all transcripts created in this project should be
 // initialized with this name:
 pub const APP_DOMAIN_LABEL: &[u8] = b"autct v1.0";
+pub const BRANCHING_FACTOR: usize = 256;
 
 // Given a hex string of big-endian encoding,
 // first change to little endian bytes and then deserialize
