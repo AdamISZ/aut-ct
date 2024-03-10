@@ -8,6 +8,7 @@ Anonymous usage tokens from curve trees
 * [Worked Example](#worked-example)
 * [Running](#running)
 * [Testing](#testing)
+* [Security](#security)
 
 # Introduction
 
@@ -142,6 +143,10 @@ Output of rpcclient should be just `1` for successful verification. Any negative
 
 See more info [here](./testdata/README.md). 
 
+# Security
+
+See more [here](./security-analysis.md).
+
 # TODO
 
-Inclusion of domain-specific strings (customisable) to the challenge hash. User choice of tree parameters (depth, height), and/or choice of parameters depending on data set. Ability to enter secret key in a safer way than on the command line(!), as well as many other security considerations. Proper command line arguments, help messages etc. Standard format for inputting keys, perhaps a bolt-on tool to take data from Bitcoin blocks and convert to a more compact format for public keys (binary instead of current hex).
+Inclusion of domain-specific strings (customisable) to the challenge hash. Ability to enter secret key in a safer way than on the command line(!), as well as many other security considerations. Proper command line arguments, help messages etc. Standard format for inputting keys, perhaps a bolt-on tool to take data from Bitcoin blocks and convert to a more compact format for public keys (binary instead of current hex).
