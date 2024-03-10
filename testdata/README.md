@@ -13,5 +13,7 @@ This is a holding area for various keysets for testing. More will be added.
 
 There is a large set of 48000 (approx) public keys derived from signet, taproot outputs, generated from the range of blocks indicated.
 
+There is a larger set of 97000 (approx) public keys derived from all signet outputs between blocks 80000 and 180000. Recommended to use branching factor 512 and depth 2 for this set; you can get perhaps a 40-50ms verification time for the provided private key.
+
 The two other keysets are generated from private keys corresponding to integers 1,2,3... with the maximum being one less than the digit shown. So for example the private key of the first public key is 010101..01 (32 single bytes of '1'). So an example proof invocation would be `./autct 0303...03 fakekeys-6.txt`.
 

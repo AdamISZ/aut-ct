@@ -15,7 +15,7 @@ Anonymous usage tokens from curve trees
 
 If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to [Installation](#installing) and then [Worked Example](#worked-example).
 
-Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short (sub second at least) so that it can be used practically in real systems.
+Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short so that it can be used practically in real systems. In practice this code already allows such verifications **in about 50ms on commodity hardware for 100K pubkeys or more**.
 
 More specifically, we imagine these public keys to be those of Bitcoin utxos (or perhaps just txos).
 
@@ -94,6 +94,10 @@ This client connects to the above server (port 23333 locally currently) and call
 In the directory `testdata` there is an example pubkey file containing approximately 48000 pubkeys taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. The private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `a496230673e00ed72abe37b9acd01763620f918e5618df4d0db1377d0d8ba72d80`. 
 
 Additionally the depth and branching factors of the Curve Tree are still hard coded (2, 256 respectively); obviously this can (and will, in future) be mode configurable.
+
+## Configuring
+
+All the above should work with default configuration. However, there is a config file auto-generated in `~/.config/autct/default-config.toml` (or similar). Note that a current TODO is that the branching_factor field is not currently being used, but the others are. The depth is the depth of the curve tree. The `generators_length_log_2` may be removed in future but it should be the smallest power of 2 that's bigger than `D(912+L-1)` where `D` is the depth and `L` is the branching factor. If it helps, for key sets less than 64000 in size, the defaults should be fine. The rpc port can also be configured here.
 
 # Worked Example
 
