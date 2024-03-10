@@ -18,7 +18,10 @@ async fn main() {
     let args: Vec<String> = env::args().collect();
     let autctcfg: AutctConfig = confy::load("autct", None).expect("Config failed to load");
     let pubkey_filepath2 = args[1].clone();
-    let addr = "127.0.0.1:23333";
+    let rpc_port = autctcfg.rpc_port;
+    let host: &str= &autctcfg.rpc_host;
+    let port_str: &str = &rpc_port.to_string();
+    let addr: String = format!("{}:{}", host, port_str);
     let mut rng = rand::thread_rng();
     let generators_length = 1 << autctcfg.generators_length_log_2;
     let sr_params2 = SelRerandParameters::<SecpConfig, SecqConfig>::new(
@@ -37,7 +40,7 @@ async fn main() {
     let server = Server::builder()
         .register(verifier_service) // register service
         .build();
-    let listener = TcpListener::bind(addr).await.unwrap();
+    let listener = TcpListener::bind(&addr).await.unwrap();
 
     // Run the server in a separate task
     let handle = task::spawn(async move {
