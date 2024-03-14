@@ -28,10 +28,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     //let mut config = Config::from_args();
     let mut config = blocks_iterator::Config::new(
-        "/home/waxwing/.bitcoin/signet/blocks", bitcoin::Network::Signet);
+        "/home/username/.bitcoin/blocks", bitcoin::Network::Mainnet);
     config.skip_prevout = true;
     let iter = blocks_iterator::iter(config);
     let mut output_file = File::create("keysfound.txt").unwrap();
+    let mut v: Vec<String> = Vec::new();
     for block_extra in iter {
         if period.period_elapsed().is_some() {
             info!(
@@ -46,10 +47,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         if block_extra.height == 687456 {
             info!("taproot locked in");
         }
-        let mut v: Vec<String> = Vec::new();
         for (_txid, tx) in block_extra.iter_tx() {
             for (_i, output) in tx.output.iter().enumerate() {
-                if output.script_pubkey.is_witness_program() {
+                if output.script_pubkey.is_witness_program() && output.value > 500000u64 {
+                    //println!("Found an output with value: {}", output.value);
                     let version = output.script_pubkey.as_bytes()[0] as usize;
                     if version == 0x51 {
                         // lose version byte and also leading 0x20 (length)
@@ -60,9 +61,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
         }
-        let fullstr = v.into_iter().unique().join(" ");
-        write!(output_file, "{}", fullstr).expect("Failed to write keys to file.");
-
     }
+    let fullstr = v.into_iter().unique().join(" ");
+    write!(output_file, "{}", fullstr).expect("Failed to write keys to file.");
     Ok(())
 }

@@ -61,7 +61,7 @@ linker `cc` not found
 ... e.g., on Debian, your Rust installation is not functioning because it doesn't have the C compiler toolchain. This should fix it:
 
 ```
-sudo apt install build-essentials
+sudo apt install build-essential
 ```
 
 # Running
