@@ -101,13 +101,28 @@ pub fn get_leaf_commitments<F: PrimeField,
     let hex_keys = hex_keys_vec.into_iter();
     let mut b = Vec::new();
     for s in hex_keys {
-        let mut sbin = hex::decode(s).expect("hex decode failed");
-        sbin.reverse();
-        b.push(sbin.clone());
+        let o_sbin = hex::decode(s);
+        match o_sbin {
+            Ok(x) => {let mut sbin = x;
+                sbin.reverse();
+                b.push(sbin.clone())},
+            Err(e) => {println!("Error {}", e)}
+        }
+        //let mut sbin = hex::decode(s).expect("hex decode failed");
+        //sbin.reverse();
+        //b.push(sbin.clone());
     }
-    let leaf_commitments: Vec<Affine<P0>> = b
-            .into_iter()
-            .map(|x| <Affine<P0> as AffineRepr>::from_random_bytes(&x[..]).unwrap()).collect();
+    let mut leaf_commitments = Vec::new();
+    for a in b.into_iter(){
+        let x = <Affine<P0> as AffineRepr>::from_random_bytes(&a[..]);
+        match x {
+            Some(y) => {leaf_commitments.push(y)},
+            None => {println!("Error {:#?}", a);}, // not hex decoding in case invalid? TODO
+        };
+    }
+    //let leaf_commitments: Vec<Affine<P0>> = b
+    //        .into_iter()
+    //        .map(|x| <Affine<P0> as AffineRepr>::from_random_bytes(&x[..]).unwrap()).collect();
     leaf_commitments
 }
 
