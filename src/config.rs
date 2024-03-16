@@ -1,4 +1,5 @@
 use serde_derive::{Serialize, Deserialize};
+use crate::utils;
 
 #[derive(Serialize, Deserialize)]
 pub struct AutctConfig {
@@ -15,7 +16,7 @@ pub struct AutctConfig {
 impl ::std::default::Default for AutctConfig {
     fn default() -> Self { Self {
     version: 0, keyset: "default".to_string(),
-    context_label: "autct-default".to_string(),
+    context_label: std::str::from_utf8(utils::CONTEXT_LABEL).unwrap().to_string(),
     depth: 2,
     branching_factor: 256, // currently not used, TODO
     generators_length_log_2: 11,

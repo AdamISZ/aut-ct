@@ -34,6 +34,7 @@ pub mod rpc {
 
     pub struct RPCProofVerifier{
         pub pubkey_filepath: String,
+        pub context_label: String,
         pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
         pub curve_tree: CurveTree<{BRANCHING_FACTOR}, SecpConfig, SecqConfig>,
         pub H: Affine<SecpConfig>
@@ -90,7 +91,8 @@ pub mod rpc {
                         &E,
                         &G,
                         &self.H,
-                        &J
+                        &J,
+                        self.context_label.as_bytes()
                     )
                     .is_ok()){
                         println!("PedDLEQ proof is invalid");

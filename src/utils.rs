@@ -16,6 +16,9 @@ use relations::curve_tree::SelRerandParameters;
 // initialized with this name:
 pub const APP_DOMAIN_LABEL: &[u8] = b"autct v1.0";
 pub const BRANCHING_FACTOR: usize = 256;
+// specific to an application; this default is only for tests.
+// Should be set in the config file, in the field `context_label`.
+pub const CONTEXT_LABEL: &[u8] = b"default-app-context-label";
 
 // Given a hex string of big-endian encoding,
 // first change to little endian bytes and then deserialize

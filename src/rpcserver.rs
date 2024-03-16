@@ -35,7 +35,8 @@ async fn main() {
         RPCProofVerifier{ sr_params: sr_params2,
             pubkey_filepath: pubkey_filepath2,
             curve_tree: curve_tree2,
-            H: H2,}
+            H: H2,
+            context_label: autctcfg.context_label}
     );
     let server = Server::builder()
         .register(verifier_service) // register service

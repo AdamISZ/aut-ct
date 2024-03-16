@@ -16,7 +16,7 @@ Anonymous usage tokens from curve trees
 
 If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to [Installation](#installing) and then [Worked Example](#worked-example).
 
-Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short so that it can be used practically in real systems. In practice this code already allows such verifications **in about 50ms on commodity hardware for 100K pubkeys or more**.
+Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short so that it can be used practically in real systems. In practice this code already allows such verifications **in about 40-60ms on commodity hardware for up to 2.5M pubkeys (at least)**.
 
 More specifically, we imagine these public keys to be those of Bitcoin utxos (or perhaps just txos).
 
@@ -82,7 +82,7 @@ The prover provides a hex-encoded 32 byte string, as private key, as first argum
 ./rpcserver somepubkeys.txt
 ```
 
-As probably obvious, the idea here is that we run a service (somewhere) for a client to be able to throw serialized proofs at, and ask it to verify (preferably quickly!) if the proof and the corresponding key image actually validate against the curve tree. If so, the user can credit whoever provided this proof, with some kind of token, service access, whatever, and also keep track of what key images have already been used (this code currently doesn't do that but it's the trivial part: just keep a list of used key images, and check). Here "quickly" should be in the 100ms or less range, for even up to 100K + pubkeys. The RPC server takes a few seconds to start (loading precomputation tables and constructing the Curve Tree), and then serves on port 23333.
+As probably obvious, the idea here is that we run a service (somewhere) for a client to be able to throw serialized proofs at, and ask it to verify (preferably quickly!) if the proof and the corresponding key image actually validate against the curve tree. If so, the user can credit whoever provided this proof, with some kind of token, service access, whatever, and also keep track of what key images have already been used (this code currently doesn't do that but it's the trivial part: just keep a list of used key images, and check). Here "quickly" should be in the 50-100ms range, for even up to millions of pubkeys. The RPC server takes a few seconds to start (loading precomputation tables and constructing the Curve Tree), and then serves on port as configured in the config file (23333 by default).
 
 `rpcclient`:
 
@@ -90,15 +90,19 @@ As probably obvious, the idea here is that we run a service (somewhere) for a cl
 ./rpcclient somepubkeys.txt proof.txt
 ```
 
-This client connects to the above server (port 23333 locally currently) and calls the `verify()` function with a binary string taken directly from the second argument (here `proof.txt`), and should return with `1` in sub 100ms. Errors will give negative integers instead.
+This client connects to the above server and calls the `verify()` function with a binary string taken directly from the second argument (here `proof.txt`), and should return with `1`. Errors will give negative integers instead.
 
-In the directory `testdata` there is an example pubkey file containing approximately 48000 pubkeys taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. The private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `a496230673e00ed72abe37b9acd01763620f918e5618df4d0db1377d0d8ba72d80`. 
-
-Additionally the depth and branching factors of the Curve Tree are still hard coded (2, 256 respectively); obviously this can (and will, in future) be mode configurable.
+In the directory `testdata` there are example pubkey files containing approximately 50K and 100K pubkeys (approx) taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. The private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `a496230673e00ed72abe37b9acd01763620f918e5618df4d0db1377d0d8ba72d80`. 
 
 ## Configuring
 
-All the above should work with default configuration. However, there is a config file auto-generated in `~/.config/autct/default-config.toml` (or similar). Note that a current TODO is that the branching_factor field is not currently being used, but the others are. The depth is the depth of the curve tree. The `generators_length_log_2` may be removed in future but it should be the smallest power of 2 that's bigger than `D(912+L-1)` where `D` is the depth and `L` is the branching factor. If it helps, for key sets less than 64000 in size, the defaults should be fine. The rpc port can also be configured here.
+All the above should work with default configuration. However, there is a config file auto-generated in `~/.config/autct/default-config.toml` (or similar). Note that a current TODO is that the branching_factor field is not currently being used, but the others are. If you need to change it, edit it at the top of `utils.rs` and then recompile, until this is fixed.
+
+The depth is the depth of the curve tree. The `generators_length_log_2` may be removed in future but it should be the smallest power of 2 that's bigger than `D(912+L-1)` where `D` is the depth and `L` is the branching factor. If it helps, for key sets less than 64000 in size, the defaults should be fine. The rpc port can also be configured here.
+
+You can also set the rpc host/port in this config under `rpc_host`, `rpc_port`.
+
+Finally, to actually *use* this as a tool, one should (in most cases) set the `context_label` field of the config file to something agreed by the verifier as defining usage in a particular domain. This defines the scope of usage of the resources represented by the (u)txo.
 
 # Worked Example
 
@@ -146,7 +150,3 @@ See more info [here](./testdata/README.md).
 # Security
 
 See more [here](./security-analysis.md).
-
-# TODO
-
-Inclusion of domain-specific strings (customisable) to the challenge hash. Ability to enter secret key in a safer way than on the command line(!), as well as many other security considerations. Proper command line arguments, help messages etc. Standard format for inputting keys, perhaps a bolt-on tool to take data from Bitcoin blocks and convert to a more compact format for public keys (binary instead of current hex).
