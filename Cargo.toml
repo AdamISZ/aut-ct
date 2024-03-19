@@ -26,7 +26,7 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 confy = "^0.5"
-blocks_iterator = {git = "https://github.com/RCasatta/blocks_iterator", rev = "b421617cba76a6a5c119fa5733c6c8181b2c7483" }
+blocks_iterator = {git = "https://github.com/RCasatta/blocks_iterator", rev = "a3eb1b2b9da52f8d9a3e24e8950aa2581696616e" }
 bitcoin = { version = "0.30", features = ["serde"] }
 structopt = "0.3.21"
 env_logger = "0.10"

@@ -29,6 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     //let mut config = Config::from_args();
     let mut config = blocks_iterator::Config::new(
         "/home/username/.bitcoin/blocks", bitcoin::Network::Bitcoin);
+    config.start_at_height = 781485;
     config.skip_prevout = true;
     let iter = blocks_iterator::iter(config);
     let mut output_file = File::create("keysfound.txt").unwrap();
