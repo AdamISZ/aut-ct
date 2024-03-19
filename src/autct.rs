@@ -180,7 +180,7 @@ pub fn main(){
     print_affine_compressed(P, "P after flipping");
     // next steps create the Pedersen DLEQ proof for this key:
     //
-    let J = get_generators::<SecpBase, SecpConfig>(root, autctcfg.context_label.as_bytes());
+    let J = get_generators::<SecpBase, SecpConfig>(autctcfg.context_label.as_bytes());
     print_affine_compressed(J, "J");
     // blinding factor for Pedersen
     // the Pedersen commitment D is xG + rH

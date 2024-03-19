@@ -33,8 +33,7 @@ async fn main() {
         &pubkey_filepath2,
         autctcfg.depth.try_into().unwrap(), &sr_params2);
     let G2 = SecpConfig::GENERATOR;
-    let J2 = utils::get_generators(curve_tree2.root_node(),
-        autctcfg.context_label.as_bytes());
+    let J2 = utils::get_generators(autctcfg.context_label.as_bytes());
     let verifier_service = Arc::new(
         RPCProofVerifier{ sr_params: sr_params2,
             pubkey_filepath: pubkey_filepath2,

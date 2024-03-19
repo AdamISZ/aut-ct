@@ -56,11 +56,14 @@ P0: SWCurveConfig<BaseField = F> + Copy>(pt: Affine<P0>, name: &str) {
 // Tree).
 pub fn get_generators<F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy>(
-    root: Affine<P0>,
     label: &[u8]) -> Affine<P0>{
+    // in line with above comments, probably peel out the
+    // algorithm for J into a separate sub-function, because
+    // we will probably want to add an optional counter.
+    // for now:
+    // format "J"||app-label, then pass through string-to-point algo.
+    // see issue #7, #8 for discussion.
     let mut b = Vec::new();
-    // format root||"J"||app-label, then pass through string-to-point algo.
-    root.serialize_compressed(&mut b).expect("Failed to serialize root");
     b.extend(b"J");
     b.extend(label);
     affine_from_bytes_tai::<Affine<P0>>(&b)

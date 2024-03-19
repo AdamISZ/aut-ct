@@ -337,9 +337,8 @@ mod tests {
         let mut cursor = Cursor::new(Hbin);
         let H = Affine::<SecpConfig>::deserialize_compressed(
             &mut cursor).expect("Failed to deserialize H");
-        // To calculate J, we should provide the root of the tree as a point,
-        // but here we're not doing that, so we arbitrarily use H instead.
-        let J = get_generators::<SecpBase, SecpConfig>(H, utils::CONTEXT_LABEL);
+        let J = get_generators::<SecpBase, SecpConfig>(utils::CONTEXT_LABEL);
+        print_affine_compressed(J, "J");
         for case in value {
             // TODO; why does the compiler try to force the return values
             // into a scalar field of a (projective) config, so I have to force
