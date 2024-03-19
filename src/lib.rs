@@ -37,7 +37,9 @@ pub mod rpc {
         pub context_label: String,
         pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
         pub curve_tree: CurveTree<{BRANCHING_FACTOR}, SecpConfig, SecqConfig>,
-        pub H: Affine<SecpConfig>
+        pub G: Affine<SecpConfig>,
+        pub H: Affine<SecpConfig>,
+        pub J: Affine<SecpConfig>,
     }
     #[export_impl]
     impl RPCProofVerifier {
@@ -82,16 +84,14 @@ pub mod rpc {
             let proof = PedDleqProof::<Affine<SecpConfig>>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).unwrap();
             let mut transcript = Transcript::new(APP_DOMAIN_LABEL);
-            // TODO obv generators should be initialized on startup, but trivial cost:
-            let (G, J) = get_generators();
             if !(proof
                     .verify(
                         &mut transcript,
                         &D,
                         &E,
-                        &G,
+                        &self.G,
                         &self.H,
-                        &J,
+                        &self.J,
                         self.context_label.as_bytes()
                     )
                     .is_ok()){

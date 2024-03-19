@@ -6,12 +6,13 @@ use std::env;
 use toy_rpc::Server;
 
 
-use autct::rpc::RPCProofVerifier;
+use autct::{rpc::RPCProofVerifier, utils};
 use autct::autctverifier::get_curve_tree;
 use autct::config::AutctConfig;
 use relations::curve_tree::SelRerandParameters;
 use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
 use ark_secq256k1::Config as SecqConfig;
+use ark_ec::short_weierstrass::SWCurveConfig;
 
 #[tokio::main]
 async fn main() {
@@ -31,11 +32,16 @@ async fn main() {
         <{autct::utils::BRANCHING_FACTOR}, SecpBase, SecpConfig, SecqConfig>(
         &pubkey_filepath2,
         autctcfg.depth.try_into().unwrap(), &sr_params2);
+    let G2 = SecpConfig::GENERATOR;
+    let J2 = utils::get_generators(curve_tree2.root_node(),
+        autctcfg.context_label.as_bytes());
     let verifier_service = Arc::new(
         RPCProofVerifier{ sr_params: sr_params2,
             pubkey_filepath: pubkey_filepath2,
             curve_tree: curve_tree2,
+            G: G2,
             H: H2,
+            J: J2,
             context_label: autctcfg.context_label}
     );
     let server = Server::builder()

@@ -151,11 +151,9 @@ pub fn main(){
     // read privkey from command line (TODO, use a file)
     let privhex = &args[1];
     let mut x = decode_hex_le_to_F::<F>(privhex);
-    let (G, J) = get_generators::<SecpBase, SecpConfig>();
-    print_affine_compressed(J, "J");
+    let G = SecpConfig::GENERATOR;
     let mut P = G.mul(x).into_affine();
     print_affine_compressed(P, "our pubkey");
-
     let filepath = &args[2];
     let (p0proof,
         p1proof,
@@ -182,6 +180,8 @@ pub fn main(){
     print_affine_compressed(P, "P after flipping");
     // next steps create the Pedersen DLEQ proof for this key:
     //
+    let J = get_generators::<SecpBase, SecpConfig>(root, autctcfg.context_label.as_bytes());
+    print_affine_compressed(J, "J");
     // blinding factor for Pedersen
     // the Pedersen commitment D is xG + rH
     let rH = H.mul(r).into_affine();

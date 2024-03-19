@@ -42,15 +42,28 @@ P0: SWCurveConfig<BaseField = F> + Copy>(pt: Affine<P0>, name: &str) {
     println!("This is the value of {}: {:#?}", name, hex::encode(&b));
 }
 
-// protocol requires three generators G, H, J:
-// update: H will be gotten from the CurveTree rerandomization,
-// so now only returning G, J
+// protocol requires three generators G, H, J (ignoring
+// bulletproofs itself):
+// G is a known constant generator.
+// H is currently gotten from the CurveTree rerandomization,
+// because we have to use the same blinding element in both
+// sub protocols. (but note, we are currently using a default
+// value, and the verifier must ensure that it is NUMS, so
+// TODO: add this back here.)
+// J must be defined globally for the given context, so we give
+// two bits of context: an application specific label, and a tree
+// root (which ensures both sides are working on the same Curve
+// Tree).
 pub fn get_generators<F: PrimeField,
-P0: SWCurveConfig<BaseField = F> + Copy>() -> (Affine<P0>, Affine<P0>){
-let G = P0::GENERATOR;
-//let H = affine_from_bytes_tai::<Affine<P0>>(b"this is H");
-let J = affine_from_bytes_tai::<Affine<P0>>(b"this is J");
-(G, J)
+P0: SWCurveConfig<BaseField = F> + Copy>(
+    root: Affine<P0>,
+    label: &[u8]) -> Affine<P0>{
+    let mut b = Vec::new();
+    // format root||"J"||app-label, then pass through string-to-point algo.
+    root.serialize_compressed(&mut b).expect("Failed to serialize root");
+    b.extend(b"J");
+    b.extend(label);
+    affine_from_bytes_tai::<Affine<P0>>(&b)
 }
 
 pub fn field_as_bytes<F: Field>(field: &F) -> Vec<u8> {

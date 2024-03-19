@@ -277,7 +277,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use ark_ec::{AffineRepr, CurveGroup};
     use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
-    use ark_ec::short_weierstrass::Affine;
+    use ark_ec::short_weierstrass::{Affine, SWCurveConfig};
     // recipe from:
     // https://stackoverflow.com/questions/70615096/deserialize-json-list-of-hex-strings-as-bytes
     #[derive(Serialize, Deserialize, Debug)]
@@ -329,14 +329,17 @@ mod tests {
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
         let value: Vec<PedDLEQTestCase> = from_str::<Vec<PedDLEQTestCase>>(&data).unwrap();
-        // calculate generators G, H, J for all the cases, first:
-        let (G, J) = get_generators::<SecpBase, SecpConfig>();
-        // this is the default H value in curve_trees; could re-derive but pulls in unnecessary deps:
+        // calculate generators G, H, J for all the cases, first.
+        let G = SecpConfig::GENERATOR;
+        // This is the default H value in curve_trees; could re-derive but pulls in unnecessary deps:
         let Hhex = "87163d621f520cca22c42466af3b046475db26a1177166ba51eac76fc31dc35680".to_string();
         let Hbin = hex::decode(&Hhex).unwrap();
         let mut cursor = Cursor::new(Hbin);
         let H = Affine::<SecpConfig>::deserialize_compressed(
             &mut cursor).expect("Failed to deserialize H");
+        // To calculate J, we should provide the root of the tree as a point,
+        // but here we're not doing that, so we arbitrarily use H instead.
+        let J = get_generators::<SecpBase, SecpConfig>(H, utils::CONTEXT_LABEL);
         for case in value {
             // TODO; why does the compiler try to force the return values
             // into a scalar field of a (projective) config, so I have to force
