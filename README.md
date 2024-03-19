@@ -92,7 +92,7 @@ As probably obvious, the idea here is that we run a service (somewhere) for a cl
 
 This client connects to the above server and calls the `verify()` function with a binary string taken directly from the second argument (here `proof.txt`), and should return with `1`. Errors will give negative integers instead.
 
-In the directory `testdata` there are example pubkey files containing approximately 50K and 100K pubkeys (approx) taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. The private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `a496230673e00ed72abe37b9acd01763620f918e5618df4d0db1377d0d8ba72d80`. 
+In the directory `testdata` there are example pubkey files containing approximately 50K and 100K pubkeys (approx) taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. The private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `49cf07001864d68d6271f2dfc664733d201b89a21111504dcff5e19d80a9adbd80`. 
 
 ## Configuring
 
@@ -136,7 +136,7 @@ Elapsed time for verifier gadget call: 2.15ms
 Elapsed time for verifier calls: 46.28ms
 Root is odd? false
 Elapsed time for verify_curve_tree_proof: 49.00ms
-Verifying curve tree passed and it matched the key image. Here is the key image: "a496230673e00ed72abe37b9acd01763620f918e5618df4d0db1377d0d8ba72d80"
+Verifying curve tree passed and it matched the key image. Here is the key image: "49cf07001864d68d6271f2dfc664733d201b89a21111504dcff5e19d80a9adbd80"
 ```
 
 Output of rpcclient should be just `1` for successful verification. Any negative number means the proof is not valid for the given Curve Tree.
