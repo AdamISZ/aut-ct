@@ -200,7 +200,8 @@ pub fn main(){
             &J,
             None,
             None,
-            autctcfg.context_label.as_bytes()
+            autctcfg.context_label.as_bytes(),
+            autctcfg.user_string.as_bytes()
     );
     let mut buf = Vec::with_capacity(proof.serialized_size(Compress::Yes));
     proof.serialize_compressed(&mut buf).unwrap();
@@ -214,7 +215,8 @@ pub fn main(){
                 &G,
                 &H,
                 &J,
-                autctcfg.context_label.as_bytes()
+                autctcfg.context_label.as_bytes(),
+                autctcfg.user_string.as_bytes()
             )
             .is_ok());
         print_affine_compressed(D, "D");

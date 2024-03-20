@@ -43,4 +43,14 @@ The standard procedure for sigma protocols also applies here.
 
 The full transcript between the prover and verifier is (setup: C, C2), (R1, R2, e, s1, s2) and validity requires s1.G + s2.H = R1 + e.C, and s1.J = R2 + e.C2 . To fake these transcripts for the interactive protocol, that started with (C, C2), without access to the secrets (x, delta), we choose (e, s1, s2) at random and then calculate R1 = s1.G + s2.H - e.C, and R2 = s1.J - e.C2. This proves HVZK. Applying the ROM assumption, we argue for zero knowledgeness based on the indistinguishability of the distribution of these fake transacripts, from the distribution of real ones.
 
+### Correct application of the Fiat-Shamir heuristic
+
+The challenge should be formed as Hash(C, C2, R1, R2, message). A reminder here that "C2" is in some other places "I" or the "key image", and it is calculated as xJ where J is the agreed, NUMS, alternate generator for DLEQ, which should be formed as Hash-to-curve("application-domain-label" + ...) where the ellipsis could include some constant label and a counter string for allowing multiple (but fixed number) of reuses of a pubkey/utxo.
+
+Forming this hash with the `C` and `C2` values is in line with the Fiat-Shamir heuristic, which requires including the entirety of the conversation transcript that occurs before the hash challenge, into the hash challenge used by the prover to form the response. As an illustration of why all this is important, consider that a hash Hash(C, R1, R2, message) may fail the unforgeability of key images in the following way:
+
+If a prover has provided s2 such that s2.J = R2 + e.C2, then a new response can be formed by additive tweaking: (s2+q), which will validate with the same value R2, and a new key image: C2' = C2 + (1/e).q.J. This is because the value of e in the new verification is the same: (s2 + q).J = R2 + e.C2'. To be clear, this very simple tweaked forgery would only pass the second of the two verifications, not the first, because it uses a private key of (x + (1/e)q), and not x.
+
+But this is potentially an unsafe structure, and it may be possible with sufficient cleverness to avoid failure of the other verification, which can lead to a full on forgery-by-malleation of such a Pedersen-DLEQ proof (to be clear, I don't know if this is possible, but it makes little sense to leave this window for forgery open).
+
 

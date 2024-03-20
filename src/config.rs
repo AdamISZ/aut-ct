@@ -6,6 +6,7 @@ pub struct AutctConfig {
     pub version: u8,
     pub keyset: String,
     pub context_label: String,
+    pub user_string: String,
     pub depth: i32,
     pub branching_factor: i32,
     pub generators_length_log_2: u8,
@@ -17,6 +18,7 @@ impl ::std::default::Default for AutctConfig {
     fn default() -> Self { Self {
     version: 0, keyset: "default".to_string(),
     context_label: std::str::from_utf8(utils::CONTEXT_LABEL).unwrap().to_string(),
+    user_string: std::str::from_utf8(utils::USER_STRING).unwrap().to_string(),
     depth: 2,
     branching_factor: 256, // currently not used, TODO
     generators_length_log_2: 11,

@@ -19,7 +19,7 @@ use merlin::Transcript;
 const PEDDLEQ_PROTOCOL_LABEL: &[u8] = b"peddleqproof";
 const PEDDLEQ_PROTOCOL_VERSION: u64 = 1;
 pub trait TranscriptProtocol {
-    fn ped_dleq_proof_domain_sep(&mut self, app_context_label: &[u8]);
+    fn ped_dleq_proof_domain_sep(&mut self, app_context_label: &[u8], user_string: &[u8]);
 
     /// Append a `scalar` with the given `label`.
     fn append_scalar<C: AffineRepr>(&mut self, label: &'static [u8], scalar: &C::ScalarField);
@@ -41,13 +41,16 @@ pub trait TranscriptProtocol {
 
 impl TranscriptProtocol for Transcript {
 
-    fn ped_dleq_proof_domain_sep(&mut self, app_context_label: &[u8]) {
+    fn ped_dleq_proof_domain_sep(&mut self, app_context_label: &[u8], user_string: &[u8]) {
         self.append_message(b"dom-sep", PEDDLEQ_PROTOCOL_LABEL);
         // This is the version number for this sub-protocol (ped-dleq)
         // separate from version of higher level proto that uses it:
         self.append_u64(b"n", PEDDLEQ_PROTOCOL_VERSION);
         // This label is for the top level application using the protocol:
         self.append_message(b"dom-sep", app_context_label);
+        // This label is specific to this instance of the protocol;
+        // typically it is an ephemeral user ID, though it can be anything:
+        self.append_message(b"dom-sep", user_string);
     }
 
     fn append_scalar<C: AffineRepr>(&mut self, label: &'static [u8], scalar: &C::ScalarField) {
@@ -133,10 +136,11 @@ impl<C: AffineRepr> PedDleqProof<C> {
         J: &C,
         sarg: Option<C::ScalarField>,
         targ: Option<C::ScalarField>,
-        app_context_label: &[u8]
+        app_context_label: &[u8],
+        user_string: &[u8]
     ) -> PedDleqProof<C> {
 
-        transcript.ped_dleq_proof_domain_sep(app_context_label);
+        transcript.ped_dleq_proof_domain_sep(app_context_label, user_string);
         // Step 1: create random scalars s, t
         // Step 2: create "commitment" = sG + tH
         // Step 2b: create "commitment" = sJ
@@ -183,12 +187,13 @@ impl<C: AffineRepr> PedDleqProof<C> {
         G: &C,
         H: &C,
         J: &C,
-        app_context_label: &[u8]
+        app_context_label: &[u8],
+        user_string: &[u8]
     ) -> Result<(), &str>
     {
 
         //form correct hash challenge
-        transcript.ped_dleq_proof_domain_sep(app_context_label);
+        transcript.ped_dleq_proof_domain_sep(app_context_label, user_string);
         transcript.append_point(b"1", &self.R1);
         transcript.append_point(b"2", &self.R2);
         transcript.append_point(b"3", D);
@@ -374,7 +379,8 @@ mod tests {
             &J,
             Some(s),
             Some(t),
-            utils::CONTEXT_LABEL
+            utils::CONTEXT_LABEL,
+            utils::USER_STRING
             );
             // TODO wrap these up to remove the repetition:
             let mut b = Vec::new();

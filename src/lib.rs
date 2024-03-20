@@ -35,6 +35,7 @@ pub mod rpc {
     pub struct RPCProofVerifier{
         pub pubkey_filepath: String,
         pub context_label: String,
+        pub user_string: String,
         pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
         pub curve_tree: CurveTree<{BRANCHING_FACTOR}, SecpConfig, SecqConfig>,
         pub G: Affine<SecpConfig>,
@@ -92,7 +93,8 @@ pub mod rpc {
                         &self.G,
                         &self.H,
                         &self.J,
-                        self.context_label.as_bytes()
+                        self.context_label.as_bytes(),
+                        self.user_string.as_bytes()
                     )
                     .is_ok()){
                         println!("PedDLEQ proof is invalid");
@@ -120,6 +122,7 @@ pub mod rpc {
                 Err(_x) => return Ok(-1),
             };
             println!("Elapsed time for verify_curve_tree_proof: {:.2?}", timer1.elapsed());
+            // TODO check if any reuse is possible with sign flip:
             if claimed_D_result != D && claimed_D_result != -D {
                 println!("Curve tree proof did not match PedDLEQ proof");
                 Ok(-1)

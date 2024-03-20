@@ -19,6 +19,10 @@ pub const BRANCHING_FACTOR: usize = 256;
 // specific to an application; this default is only for tests.
 // Should be set in the config file, in the field `context_label`.
 pub const CONTEXT_LABEL: &[u8] = b"default-app-context-label";
+// specific to a protocol-instance run; typically it should be
+// an ephemeral user id. Like the above, the default exists
+// primarily for testing
+pub const USER_STRING: &[u8] = b"name-goes-here";
 
 // Given a hex string of big-endian encoding,
 // first change to little endian bytes and then deserialize

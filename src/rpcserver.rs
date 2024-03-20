@@ -41,7 +41,8 @@ async fn main() {
             G: G2,
             H: H2,
             J: J2,
-            context_label: autctcfg.context_label}
+            context_label: autctcfg.context_label,
+            user_string: autctcfg.user_string}
     );
     let server = Server::builder()
         .register(verifier_service) // register service
