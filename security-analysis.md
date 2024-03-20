@@ -25,4 +25,22 @@ Number 1 in this list is already the topic of the security proof of the Curve Tr
 
 Number 3 and 4 are (very rough descriptions) of typical requirements of unforgeability and zero knowledgeness. In other words, a serious attempt to analyze security w.r.t forgery or key leakage has to *at least* account for an attacker's possible knowledge of a bunch of other valid proofs, and an attacker's possible ownership of multiple other (in the extreme, *all* other) elements of the set from which the proofs are derived. Number 2 should probably be beefed up similarly, but it refers specifically to the "key image" part of the Pedersen-DLEQ proof.
 
+The next subsection outlines (roughly) the standard arguments for security of just the Pedersen-DLEQ part (i.e. it is only the start of what is required for 3, 4).
+
+## Precursor: Unforgeability and zero-knowledge for the Pedersen-DLEQ proof
+
+### Soundness (unforgeability)
+
+The standard procedure for similar sigma protocols applies. First, we prove soundness for the interactive protocol, then we apply the random oracle model.
+
+The extractor requests a starting message from the adversary claiming to be able to forge a valid proof for a given Pedersen commitment C (where the secret witness is (x, delta)), and a given key image C2. This message is (R_1, R_2) derived by the adversary from secret scalars (s, t) (note here we are using the same notation as the paper in the root of the repo). The adversary's execution is then forked into two versions, with different challenge values e_1 and e_2. Adversary must then respond with (sigma_11, sigma_21) in one execution and (sigma_12, sigma_22) in the other. Then x is derivable as (sigma_12 - sigma_11)/(e_2 - e_1) and delta is derivable as (sigma_22 - sigma_21)/(e_2 - e_1). And x is verifiable as the DL of C2/J.
+
+Applying ROM as an "honest challenge", this implies soundness (as usual, the reduction to DL is not tight, though).
+
+### Zero knowledgeness
+
+The standard procedure for sigma protocols also applies here.
+
+The full transcript between the prover and verifier is (setup: C, C2), (R1, R2, e, s1, s2) and validity requires s1.G + s2.H = R1 + e.C, and s1.J = R2 + e.C2 . To fake these transcripts for the interactive protocol, that started with (C, C2), without access to the secrets (x, delta), we choose (e, s1, s2) at random and then calculate R1 = s1.G + s2.H - e.C, and R2 = s1.J - e.C2. This proves HVZK. Applying the ROM assumption, we argue for zero knowledgeness based on the indistinguishability of the distribution of these fake transacripts, from the distribution of real ones.
+
 
