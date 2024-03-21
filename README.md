@@ -28,6 +28,8 @@ That construction is not quite enough for usage of ownership of public keys as t
 
 This "key image" approach can be implemented as described here in this repo, in [this document](./aut-ct.pdf). It's a simple additional ZK proof of knowledge of the opening of a Pedersen commitment, tied to a key image, using completely standard Sigma protocol techniques.
 
+An initial draft of a workable protocol for "receive tokens in exchange for proven utxo ownership" is in [this document](./docs/protocol-utxo.md).
+
 # Caveat
 
 **Everything here is completely experimental and not safe in any way** (not helped by the fact I am a neophyte in Rust!). Importantly, even the underlying Curve Trees code was *only* written as a benchmarking tool, and therefore even that is not safe to use in anything remotely resembling a production environment.
