@@ -151,4 +151,4 @@ See more info [here](./testdata/README.md).
 
 # Security
 
-See more [here](./security-analysis.md).
+See more [here](./docs/security-analysis.md).
