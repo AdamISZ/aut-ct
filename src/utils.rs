@@ -82,8 +82,8 @@ pub fn field_as_bytes<F: Field>(field: &F) -> Vec<u8> {
 }
 
 pub fn read_file_string(filepath: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let data = fs::read_to_string(filepath)?;
-    Ok(data)
+    let data = fs::read_to_string(filepath).unwrap();
+    Ok(data.trim_end().to_string())
 }
 
 pub fn write_file_string(filepath: &str, mut buf: Vec<u8>) -> () {

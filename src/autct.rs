@@ -15,7 +15,7 @@ use ark_ff::{PrimeField, Zero, One};
 use ark_serialize::{
     CanonicalSerialize, Compress};
 use relations::curve_tree::{SelRerandParameters, CurveTree, SelectAndRerandomizePath};
-use std::env;
+use std::error::Error;
 use std::ops::{Mul, Add};
 use merlin::Transcript;
 
@@ -143,18 +143,20 @@ pub fn get_curve_tree_with_proof<
 }
 
 
-pub fn main(){
+pub fn main() -> Result<(), Box<dyn Error>>{
 
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
-    let args: Vec<String> = env::args().collect();
-    let autctcfg: AutctConfig = confy::load("autct", None).expect("Config failed to load");
-    // read privkey from command line (TODO, use a file)
-    let privhex = &args[1];
-    let mut x = decode_hex_le_to_F::<F>(privhex);
+
+    let autctcfg = AutctConfig::build()?;
+    // read privkey from file
+    let privkey_file_str = autctcfg.privkey_file_str.unwrap();
+    let privhex:String = read_file_string(&privkey_file_str)
+    .expect("Failed to read the private key from the file");
+    let mut x = decode_hex_le_to_F::<F>(&privhex);
     let G = SecpConfig::GENERATOR;
     let mut P = G.mul(x).into_affine();
     print_affine_compressed(P, "our pubkey");
-    let filepath = &args[2];
+    let filepath = autctcfg.keyset.unwrap();
     let (p0proof,
         p1proof,
         path,
@@ -166,9 +168,9 @@ pub fn main(){
     SecpBase,
     SecpConfig,
     SecqConfig>(
-            autctcfg.depth.try_into().unwrap(),
-            autctcfg.generators_length_log_2.try_into().unwrap(),
-            filepath, P);
+            autctcfg.depth.unwrap().try_into().unwrap(),
+            autctcfg.generators_length_log_2.unwrap().try_into().unwrap(),
+            &filepath, P);
     // if we could only find our pubkey in the list by flipping
     // the sign of our private key (this is because the BIP340 compression
     // logic is different from that in ark-ec; a TODO is to remove this
@@ -180,7 +182,7 @@ pub fn main(){
     print_affine_compressed(P, "P after flipping");
     // next steps create the Pedersen DLEQ proof for this key:
     //
-    let J = get_generators::<SecpBase, SecpConfig>(autctcfg.context_label.as_bytes());
+    let J = get_generators::<SecpBase, SecpConfig>(autctcfg.context_label.as_ref().unwrap().as_bytes());
     print_affine_compressed(J, "J");
     // blinding factor for Pedersen
     // the Pedersen commitment D is xG + rH
@@ -200,8 +202,8 @@ pub fn main(){
             &J,
             None,
             None,
-            autctcfg.context_label.as_bytes(),
-            autctcfg.user_string.as_bytes()
+            autctcfg.context_label.as_ref().unwrap().as_bytes(),
+            autctcfg.user_string.as_ref().unwrap().as_bytes()
     );
     let mut buf = Vec::with_capacity(proof.serialized_size(Compress::Yes));
     proof.serialize_compressed(&mut buf).unwrap();
@@ -215,8 +217,8 @@ pub fn main(){
                 &G,
                 &H,
                 &J,
-                autctcfg.context_label.as_bytes(),
-                autctcfg.user_string.as_bytes()
+                autctcfg.context_label.unwrap().as_bytes(),
+                autctcfg.user_string.unwrap().as_bytes()
             )
             .is_ok());
         print_affine_compressed(D, "D");
@@ -238,4 +240,5 @@ pub fn main(){
     write_file_string("proof.txt", buf2);
     println!("Proof generated successfully and written to proof.txt. Size was {}", total_size);
     print_affine_compressed(root, "root");
+    Ok(())
 }
