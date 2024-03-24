@@ -172,7 +172,7 @@ target/release/autct -k testdata/signet-pubkeys-85000-155000.txt
 In a different terminal, but still in repository root, start the RPC server:
 
 ```
-target/release/rpcserver \
+target/release/rpcserver -k \
 testdata/signet-pubkeys-85000-155000.txt
 ```
 
