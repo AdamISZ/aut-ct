@@ -14,10 +14,8 @@ use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
 use ark_secq256k1::Config as SecqConfig;
 use ark_ec::short_weierstrass::SWCurveConfig;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>>{
-    //let autctcfg: AutctConfig = confy::load("autct", None).expect("Config failed to load");
-    let autctcfg = AutctConfig::build()?;
+
+pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let pubkey_filepath2 = autctcfg.keyset.unwrap();
     let rpc_port = autctcfg.rpc_port.unwrap();
     let host: &str= &autctcfg.rpc_host.unwrap();

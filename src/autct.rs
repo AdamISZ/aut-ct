@@ -7,6 +7,8 @@ extern crate ark_secp256k1;
 use autct::utils::*;
 use autct::config::AutctConfig;
 use autct::peddleq::PedDleqProof;
+mod rpcclient;
+mod rpcserver;
 use bulletproofs::r1cs::R1CSProof;
 use bulletproofs::r1cs::Prover;
 use alloc::vec::Vec;
@@ -142,12 +144,22 @@ pub fn get_curve_tree_with_proof<
      returned_rand, b_blinding, root, privkey_parity_flip)
 }
 
-
-pub fn main() -> Result<(), Box<dyn Error>>{
-
-    type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>>{
 
     let autctcfg = AutctConfig::build()?;
+    match autctcfg.clone().mode.unwrap().as_str() {
+        "prove" => {return run_prover(autctcfg)},
+        "request" => {return rpcclient::do_request(autctcfg).await},
+        "serve" => {return rpcserver::do_serve(autctcfg).await},
+        _ => {println!("Invalid mode, must be 'prove', 'serve' or 'request'")},
+
+    }
+    Ok(())
+}
+
+fn run_prover(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+    type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     // read privkey from file
     let privkey_file_str = autctcfg.privkey_file_str.unwrap();
     let privhex:String = read_file_string(&privkey_file_str)
@@ -242,3 +254,4 @@ pub fn main() -> Result<(), Box<dyn Error>>{
     print_affine_compressed(root, "root");
     Ok(())
 }
+

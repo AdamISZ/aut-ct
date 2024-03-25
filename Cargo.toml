@@ -44,14 +44,6 @@ name = "autct"
 path = "src/autct.rs"
 
 [[bin]]
-name = "rpcserver"
-path = "src/rpcserver.rs"
-
-[[bin]]
-name = "rpcclient"
-path = "src/rpcclient.rs"
-
-[[bin]]
 name = "keyfinder"
 path = "src/keyfinder.rs"
 

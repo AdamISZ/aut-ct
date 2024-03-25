@@ -6,15 +6,11 @@ use autct::rpc::*;
 use std::error::Error;
 use std::fs;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>>{
-    let autctcfg = AutctConfig::build()?;
+pub async fn do_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let rpc_port = autctcfg.rpc_port;
     let host: &str= &autctcfg.rpc_host.unwrap();
     let port_str: &str = &rpc_port.unwrap().to_string();
     let addr: String = format!("{}:{}", host, port_str);
-    // see docs/protocol_utxo.md for details on the meaning
-    // encoded in this filename (though for testing you can use anything)
     let pubkey_file_str = autctcfg.keyset.unwrap();
     let proof_file_str = autctcfg.proof_file_str.unwrap();
     let buf = fs::read(proof_file_str).unwrap();

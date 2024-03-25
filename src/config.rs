@@ -23,38 +23,56 @@ https://stackoverflow.com/a/75981247
 */
 
 #[derive(Parser, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[command(author, version, about, long_about = None, next_line_help = true)]
+#[command(about, long_about = None, next_line_help = true)]
+#[clap(version, about="Anonymous Usage Tokens from Curve Trees")]
 pub struct AutctConfig {
+    // the argument `mode` is one of "prove", "serve", "request"
+    #[arg(short('M'), long, required=true)]
+    pub mode: Option<String>,
     #[arg(short('V'), long, required=false)]
     pub version: Option<u8>,
+    // see docs/protocol_utxo.md for details on the meaning
+    // encoded in this (file)name (though for testing you can use anything)
     #[arg(short('k'), long, required=true)]
     pub keyset: Option<String>,
     #[arg(short('c'), long, required=false)]
     pub context_label: Option<String>,
+    // intended as a BIP-340-hex encoding of a secp256k1 point,
+    // though again, anything is allowed:
     #[arg(short('u'), long, required=false)]
+    // depth of the Curve Tree
     pub user_string: Option<String>,
     #[arg(short('d'), long, required=false)]
     pub depth: Option<i32>,
+    // branching factor of the Curve Tree
+    // (TODO this is currently ignored)
     #[arg(short('b'), long, required=false)]
     pub branching_factor: Option<i32>,
+    // log-size of generator set used in Bulletproofs
+    // TODO this can be calculated dynamically
     #[arg(short('g'), long, required=false)]
     pub generators_length_log_2: Option<u8>,
-    #[arg(short('h'), long, required=false)]
+    // next 2 settings are RPC configuration
+    #[arg(short('H'), long, required=false)]
     pub rpc_host: Option<String>,
     #[arg(short('p'), long, required=false)]
     pub rpc_port: Option<i32>,
     /// Print additional information in the terminal
     #[arg(short('v'), long, required = false)]
     verbose: Option<bool>,
-    // only required for prover
+    // only required for prover, destination
+    // file for the binary string which is the proof
     #[arg(short('P'), long, required = false)]
     pub proof_file_str: Option<String>,
+    // file containing hex-encoded 32 byte serialization
+    // of private key
     #[arg(short('i'), long, required=false)]
     pub privkey_file_str: Option<String>,
 }
 
 impl ::std::default::Default for AutctConfig {
     fn default() -> Self { Self {
+    mode: Some("prove".to_string()),
     version: Some(0), keyset: Some("default".to_string()),
     context_label: Some(std::str::from_utf8(utils::CONTEXT_LABEL).unwrap().to_string()),
     user_string: Some(std::str::from_utf8(utils::USER_STRING).unwrap().to_string()),
@@ -86,6 +104,7 @@ impl AutctConfig {
 
         let config_file: AutctConfig = confy::load(app_name, None)?;
         // derp:
+        self.mode = self.mode.or(config_file.mode);
         self.version = self.version.or(config_file.version);
         self.keyset = self.keyset.or(config_file.keyset);
         self.context_label = self.context_label.or(config_file.context_label);
