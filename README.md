@@ -68,72 +68,35 @@ sudo apt install build-essential
 
 # Running
 
-Build the project with `cargo build --release` (without release flag, the debug version is very slow), then the binaries are in `aut-ct/target/release`. There are three binaries, `autct`, `rpcclient`, `rpcserver`.
+Build the project with `cargo build --release` (without release flag, the debug version is very slow), then the executable is at `target/release/autct`.
 
-Each binary can be run as `./autct --help` to see the set of options that can be used:
+Start with `target/release/autct --help` for the summary of the syntax. Note that two "optional" flags are required (TODO: they should be arguments), namely `-M` for the mode and `-k` for the keyset.
 
-```
-./autct --help
-Usage: autct [OPTIONS] --keyset <KEYSET>
-
-Options:
-  -V, --version <VERSION>
-          
-  -k, --keyset <KEYSET>
-          
-  -c, --context-label <CONTEXT_LABEL>
-          
-  -u, --user-string <USER_STRING>
-          
-  -d, --depth <DEPTH>
-          
-  -b, --branching-factor <BRANCHING_FACTOR>
-          
-  -g, --generators-length-log-2 <GENERATORS_LENGTH_LOG_2>
-          
-  -h, --rpc-host <RPC_HOST>
-          
-  -p, --rpc-port <RPC_PORT>
-          
-  -v, --verbose <VERBOSE>
-          Print additional information in the terminal [possible values: true, false]
-  -P, --proof-file-str <PROOF_FILE_STR>
-          
-  -i, --privkey-file-str <PRIVKEY_FILE_STR>
-          
-  -h, --help
-          Print help
-  -V, --version
-          Print version
-```
-
-Note that while `--keyset` is indeed required and not optional for *all* of the binaries, certain other options are required depending on each, as per below:
+Taking each of the three `mode`s in turn:
 
 
-Taking each in turn:
-
-`autct`:
+"prove":
 
 ```
-./autct --keyset autct-830000-500000-0-2-1024.aks -i privkeyfile
+./autct -M prove --keyset autct-830000-500000-0-2-1024.aks -i privkeyfile
 ```
 
 Note that the private key is read in as hex from the file specified with `-p`, which by default is a local directory file called `privkey`.
 
 The file `autct-830000-500000-0-2-1024.aks`, or whatever else is specified (see [here](./docs/protocol-utxo.md) Appendix 1 for filename structure), should contain public keys in formaat: compressed, hex encoded, separated by whitespace, all on one line. The output is sent to the file specified by `-P` (by default `./proof.txt`), which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file, in order to identify the correct index to use in the proof.
 
-`rpcserver`:
+"serve":
 
 ```
-./rpcserver --keyset autct-830000-500000-0-2-1024.aks
+./autct -M serve --keyset autct-830000-500000-0-2-1024.aks
 ```
 
-As probably obvious, the idea here is that we run a service (somewhere) for a client to be able to throw serialized proofs at, and ask it to verify (quickly!) if the proof and the corresponding key image actually validate against the curve tree. If so, the user can credit whoever provided this proof, with some kind of token, service access, whatever, and also keep track of what key images have already been used (this code currently doesn't do that but it's the trivial part: just keep a list of used key images, and check). Here "quickly" should be in the 50-100ms range, for even up to millions of pubkeys. The RPC server takes a few seconds to start (loading precomputation tables and constructing the Curve Tree), and then serves on port as specified with `-p` at host specified with `-h` (default 127.0.0.1:23333).
+As probably obvious, the idea here is that we run a service (somewhere) for a client to be able to throw serialized proofs at, and ask it to verify (quickly!) if the proof and the corresponding key image actually validate against the curve tree. If so, the user can credit whoever provided this proof, with some kind of token, service access, whatever, and also keep track of what key images have already been used (this code currently doesn't do that but it's the trivial part: just keep a list of used key images, and check). Here "quickly" should be in the 50-100ms range, for even up to millions of pubkeys. The RPC server takes a few seconds to start (loading precomputation tables and constructing the Curve Tree), and then serves on port as specified with `-p` at host specified with `-H` (default 127.0.0.1:23333).
 
-`rpcclient`:
+"request":
 
 ```
-./rpcclient --keyset autct-830000-500000-0-2-1024.aks -P proof.txt
+./autct --keyset autct-830000-500000-0-2-1024.aks -P proof.txt
 ```
 
 This client connects to the above server and calls the `verify()` function with a binary string taken directly from the file specified with `-P` (`./proof.txt` by default), and should return with `1`. Errors will give negative integers instead.
@@ -143,7 +106,7 @@ In the directory `testdata` there are example pubkey files containing approximat
 ## Configuring
 
 There is a config file auto-generated in `~/.config/autct/default-config.toml` (or similar).
-Precedence operation is as you would expect: command line options take precedence over config file values, and updates will be persisted to that config file. Third in order of precedence is the default value.
+Precedence operation is as you would expect: command line options take precedence over config file values, and be aware updates (i.e. just choosing a different option in a command line call) will be persisted to that config file. Third in order of precedence is the default value. As noted, two "options" (`-M` and `-k`) are required to be specified always.
 
 Note that a current TODO is that the branching_factor field is not currently being used, but the others are. If you need to change it, edit it at the top of `utils.rs` and then recompile, until this is fixed.
 
@@ -166,25 +129,25 @@ echo 373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf > privkey
 Then compute the proof:
 
 ```
-target/release/autct -k testdata/signet-pubkeys-85000-155000.txt
+target/release/autct -M prove -k testdata/signet-pubkeys-85000-155000.txt
 ```
 
-In a different terminal, but still in repository root, start the RPC server:
+In a different terminal, but still in repository root, start the server-verifier:
 
 ```
-target/release/rpcserver -k \
+target/release/autct -M serve -k \
 testdata/signet-pubkeys-85000-155000.txt
 ```
 
 Go back to the original terminal, and make a request from the rpc client,
-to verify the proof:
+to verify the proof and deliver a resource:
 
 ```
-target/release/rpcclient -P proof.txt -k \
+target/release/autct -M request -P proof.txt -k \
 testdata/signet-pubkeys-85000-155000.txt
 ```
 
-Ouput log in rpcserver terminal should look similar to this:
+Ouput log in server-verifier's terminal should look similar to this:
 
 ```
 Elapsed time for selrerand paramater generation: 58.00ns
@@ -197,7 +160,7 @@ Verifying curve tree passed and it matched the key image. Here is the key image:
 
 Output of rpcclient should be just `1` for successful verification. Any negative number means the proof is not valid for the given Curve Tree.
 
-(Process currently verified working on Ubuntu 22.04 and Debian 12)
+(Process currently verified working on Ubuntu 22.04, Debian 12 and Windows 10)
 
 # Testing
 
