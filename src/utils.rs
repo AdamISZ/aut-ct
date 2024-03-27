@@ -16,7 +16,7 @@ use relations::curve_tree::SelRerandParameters;
 
 // all transcripts created in this project should be
 // initialized with this name:
-pub const APP_DOMAIN_LABEL: &[u8] = b"autct v1.0";
+pub const APP_DOMAIN_LABEL: &[u8] = b"autct-v1.0";
 pub const BRANCHING_FACTOR: usize = 256;
 // specific to an application; this default is only for tests.
 // Should be set in the config file, in the field `context_label`.
