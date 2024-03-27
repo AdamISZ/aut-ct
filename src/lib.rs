@@ -4,6 +4,7 @@ pub mod peddleq;
 pub mod utils;
 pub mod autctverifier;
 pub mod config;
+pub mod keyimagestore;
 
 extern crate rand;
 extern crate alloc;

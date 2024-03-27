@@ -68,6 +68,11 @@ pub struct AutctConfig {
     // of private key
     #[arg(short('i'), long, required=false)]
     pub privkey_file_str: Option<String>,
+    // filename suffix for keyimage files (there is
+    // a different file for every (app domain label,
+    // context label) pair).
+    #[arg(long, required=false)]
+    pub keyimage_filename_suffix: Option<String>,
 }
 
 impl ::std::default::Default for AutctConfig {
@@ -84,6 +89,7 @@ impl ::std::default::Default for AutctConfig {
     verbose: Some(true),
     proof_file_str: None,
     privkey_file_str: Some("privkey".to_string()),
+    keyimage_filename_suffix: Some("keyimages".to_string()),
  } }
 }
 
@@ -116,6 +122,7 @@ impl AutctConfig {
         self.rpc_port = self.rpc_port.or(config_file.rpc_port);
         self.proof_file_str = self.proof_file_str.or(config_file.proof_file_str);
         self.privkey_file_str = self.privkey_file_str.or(config_file.privkey_file_str);
+        self.keyimage_filename_suffix = self.keyimage_filename_suffix.or(config_file.keyimage_filename_suffix);
 
         Ok(self)
     }

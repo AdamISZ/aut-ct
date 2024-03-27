@@ -8,7 +8,9 @@ use ark_ff::PrimeField;
 use ark_ec::AffineRepr;
 use ark_ec::short_weierstrass::SWCurveConfig;
 use ark_ec::short_weierstrass::Affine;
+use std::io::Error;
 use std::fs;
+use std::path::PathBuf;
 use ark_serialize::CanonicalSerialize;
 use relations::curve_tree::SelRerandParameters;
 
@@ -88,6 +90,10 @@ pub fn read_file_string(filepath: &str) -> Result<String, Box<dyn std::error::Er
 
 pub fn write_file_string(filepath: &str, mut buf: Vec<u8>) -> () {
     fs::write(filepath, &mut buf).expect("Failed to write to file");
+}
+
+pub fn write_file_string2(loc: PathBuf, mut buf: Vec<u8>) ->Result<(), Error> {
+    fs::write(loc, &mut buf)
 }
 
 // an effective generation of NUMS deterministically:
