@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::fmt;
+use std::path::{Path, PathBuf};
 use std::io::Error;
 
 use ark_ff::PrimeField;
@@ -21,23 +22,35 @@ pub struct KeyImageStore<C: AffineRepr>  {
     basepoint: Option<C>,
     keylen: usize,
     keys: Vec<C>,
-    full_file_loc: Option<PathBuf>,
+    // the full filename depends on:
+    // 1. the name that is set (currently using APP_DOMAIN_LABEL)
+    // 2. the context label as defined in the config
+    // 3. the file suffix as defined in the config
+    // 4. the file extension which is a constant in this module
+    pub full_file_loc: Option<PathBuf>,
 }
 
 impl<C: AffineRepr> KeyImageStore<C> {
     pub fn new(file_suffix: Option<String>, name: String, basepoint: Option<C>) -> Self {
-        KeyImageStore {
+        let mut ks = KeyImageStore {
             file_suffix,
             name,
             basepoint,
             keylen: usize::try_from(0u64).unwrap(),
             keys: Vec::new(),
             full_file_loc: None,
-        }
+        };
+        // a KeyImageStore object is always instantiated with enough
+        // information to set the full filename/location:
+        let mut str1 = ks.name.clone();
+        str1.push_str(&String::from_utf8(CONTEXT_LABEL.to_vec()).unwrap());
+        str1.push_str(ks.file_suffix.as_mut().unwrap());
+        ks.full_file_loc = Some(PathBuf::from(str1 + &String::from_utf8(KEYIMAGE_FILE_EXTENSION.to_vec()).unwrap()));
+        ks
     }
 
     pub fn is_key_in_store
-    (&mut self, key_to_check: C) -> bool {
+    (&self, key_to_check: C) -> bool {
         match self.keys.iter().position(|&x| x  == key_to_check) {
             None => false,
             Some(_key) => true
@@ -138,10 +151,30 @@ impl<C: AffineRepr> CanonicalDeserialize for KeyImageStore<C> {
     }
 }
 
+pub struct KeyImageStoreExistsError{
+    filename: PathBuf,
+}
+
+impl fmt::Display for KeyImageStoreExistsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "The key image store file already exists: {:?}", self.filename)
+    }
+}
+
+impl fmt::Debug for KeyImageStoreExistsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{ file: {}, line: {} }}", file!(), line!())
+    }
+}
+// this function must handle the possibility
+// that the file already exists; then we should return
+// an Error indicating this, so the caller can
+// instead call .deserialize..() and decide whether
+// they want to overwrite.
 pub fn create_new_store<
     F: PrimeField,
     P0: SWCurveConfig<BaseField = F> + Copy,>
-    (autctcfg: AutctConfig) -> KeyImageStore<Affine<P0>> {
+    (autctcfg: AutctConfig) -> Result<KeyImageStore<Affine<P0>>, KeyImageStoreExistsError> {
     let name = APP_DOMAIN_LABEL;
     // get the J value from the config
     let J = get_generators::<F, P0>(name);
@@ -150,15 +183,16 @@ pub fn create_new_store<
         Some(autctcfg.keyimage_filename_suffix.unwrap()),
         String::from_utf8(name.to_vec()).unwrap(),
          Some(J));
+    // in here place the 'does this file exist?' check
+    if Path::exists(&ks.full_file_loc.clone().unwrap()) {
+        Err(KeyImageStoreExistsError { filename: ks.full_file_loc.unwrap()})
+    }
+    else {
     let mut buf2 = Vec::with_capacity(ks.serialized_size(Compress::Yes));
     let _ = ks.serialize_compressed(&mut buf2);
-    let mut str1 = ks.name.clone();
-    str1.push_str(&String::from_utf8(CONTEXT_LABEL.to_vec()).unwrap());
-    str1.push_str(ks.file_suffix.as_mut().unwrap());
-    ks.full_file_loc = Some(PathBuf::from(str1 + &String::from_utf8(KEYIMAGE_FILE_EXTENSION.to_vec()).unwrap()));
-    ks.persist().expect("Failed to create new keystore file");
-    //write_file_string2(ks.full_file_loc.clone().unwrap(), buf2).expect("Failed to create KeyImageStore file");
-    ks
+        ks.persist().expect("Failed to create new keystore file");
+        Ok(ks)
+    }
 }
 
 #[cfg(test)]
@@ -185,7 +219,7 @@ mod tests {
     fn run_test_cases() {
         type F = <ark_secp256k1::Affine as AffineRepr>::BaseField;
         let cfg = AutctConfig::default();
-        let mut ks = create_new_store::<F, SecpConfig>(cfg);
+        let mut ks = create_new_store::<F, SecpConfig>(cfg).unwrap();
         let mut rng = rand::thread_rng();
         let mut x: Vec<Affine<SecpConfig>> = Vec::with_capacity(10);
         for _ in 1..11 {
@@ -198,7 +232,7 @@ mod tests {
         }
         let file_contents = fs::read(ks.full_file_loc.clone().unwrap()).unwrap();
         let cursor = Cursor::new(file_contents);
-        let mut new_ks = KeyImageStore::<Affine<SecpConfig>>::deserialize_with_mode(cursor,
+        let new_ks = KeyImageStore::<Affine<SecpConfig>>::deserialize_with_mode(cursor,
             Compress::Yes, Validate::No).unwrap();
         // TODO: can we apply some derive "equals" trait so we can directly compare that the objects are identical?
         // in any case, let's do some random comparisons:

@@ -29,7 +29,9 @@ use std::io::Cursor;
 use std::time::Instant;
 
 pub mod rpc {
+
     use super::*;
+    use std::sync::{Arc, Mutex};
     use relations::curve_tree::{CurveTree, SelRerandParameters};
     use toy_rpc::macros::export_impl;
 
@@ -42,7 +44,9 @@ pub mod rpc {
         pub G: Affine<SecpConfig>,
         pub H: Affine<SecpConfig>,
         pub J: Affine<SecpConfig>,
+        pub ks: Arc<Mutex<keyimagestore::KeyImageStore<Affine<SecpConfig>>>>,
     }
+
     #[export_impl]
     impl RPCProofVerifier {
 
@@ -68,10 +72,10 @@ pub mod rpc {
             let (pubkey_filepath, buf) = args;
             // TODO:
             // For now, we just check that the pubkey file requested
-            // by the client corresponds to the pubkey set and curve tree
-            // that we pre-loaded on startup.
+            // by the client corresponds to the keyset chosen by this process
+            // on startup.
             // In future we should have the server pre-load a whole set of
-            // different curve trees and, more practically, create a client
+            // different keysets and curve trees and, more practically, create a client
             // call that loads a specific keyset and curve tree for future
             // verification calls.
             // Also we want to be able to return sensible errors like
@@ -101,6 +105,14 @@ pub mod rpc {
                         println!("PedDLEQ proof is invalid");
                         return Ok(-2);
                     }
+            // check early if the now-verified key image (E) is a reuse-attempt:
+            if self.ks.lock().unwrap().is_key_in_store(E) {
+                println!("Reuse of key image disallowed: ");
+                print_affine_compressed(E, "Key image value");
+                return Ok(-4);
+            }
+            // if it isn't, then it counts as used now:
+            self.ks.lock().unwrap().add_key(E).expect("Failed to add keyimage to store.");
             // Next, we deserialize and validate the curve tree proof.
             let p0proof = 
             R1CSProof::<Affine<SecpConfig>>::deserialize_with_mode(
