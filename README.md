@@ -8,6 +8,7 @@ Anonymous usage tokens from curve trees
 * [Worked Example](#worked-example)
 * [Running](#running)
 * [Testing](#testing)
+* [Keysets](#keysets)
 * [Security](#security)
 
 # Introduction
@@ -164,7 +165,11 @@ Output of rpcclient should be just `1` for successful verification. Any negative
 
 # Testing
 
-See more info [here](./testdata/README.md). 
+See more info [here](./testdata/README.md).
+
+# Keysets
+
+Apart from small test key sets as in the [testing document](./testdata/README.md), you might want to use real world key sets from the mainnet taproot keys. [This document](./docs/utxo-keysets.md) explains how that can be done, but be aware that these data sets are large (e.g. it could easily take 30 minutes to do this, even after you figure out the process!).
 
 # Security
 
