@@ -43,7 +43,8 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let mut ks: KeyImageStore<Affine<SecpConfig>>;
     if ksr.is_err() {
         ks = KeyImageStore::<Affine<SecpConfig>>::new(
-            autctcfg.keyimage_filename_suffix, String::from_utf8(APP_DOMAIN_LABEL.to_vec()).unwrap(), Some(J2));
+            autctcfg.keyimage_filename_suffix, String::from_utf8(APP_DOMAIN_LABEL.to_vec()).unwrap(),
+            autctcfg.context_label.clone().unwrap(), Some(J2));
         let file_contents = fs::read(ks.full_file_loc.clone().unwrap()).unwrap();
         let cursor = Cursor::new(file_contents);
         // note that this overwrites the pre-existing 'ks' object (but not the file!)

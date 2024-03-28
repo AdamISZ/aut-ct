@@ -10,7 +10,7 @@ use ark_ec::AffineRepr;
 use ark_ec::short_weierstrass::{Affine, SWCurveConfig};
 
 use crate::config::AutctConfig;
-use crate::utils::{APP_DOMAIN_LABEL, CONTEXT_LABEL,
+use crate::utils::{APP_DOMAIN_LABEL,
     get_generators, write_file_string2};
 
 pub const KEYIMAGE_FILE_EXTENSION: &[u8] = b".aki";
@@ -19,6 +19,7 @@ pub const KEYIMAGE_FILE_EXTENSION: &[u8] = b".aki";
 pub struct KeyImageStore<C: AffineRepr>  {
     file_suffix: Option<String>,
     name: String,
+    context_label: String,
     basepoint: Option<C>,
     keylen: usize,
     keys: Vec<C>,
@@ -31,10 +32,11 @@ pub struct KeyImageStore<C: AffineRepr>  {
 }
 
 impl<C: AffineRepr> KeyImageStore<C> {
-    pub fn new(file_suffix: Option<String>, name: String, basepoint: Option<C>) -> Self {
+    pub fn new(file_suffix: Option<String>, name: String, context_label: String, basepoint: Option<C>) -> Self {
         let mut ks = KeyImageStore {
             file_suffix,
             name,
+            context_label,
             basepoint,
             keylen: usize::try_from(0u64).unwrap(),
             keys: Vec::new(),
@@ -43,7 +45,7 @@ impl<C: AffineRepr> KeyImageStore<C> {
         // a KeyImageStore object is always instantiated with enough
         // information to set the full filename/location:
         let mut str1 = ks.name.clone();
-        str1.push_str(&String::from_utf8(CONTEXT_LABEL.to_vec()).unwrap());
+        str1.push_str(&ks.context_label.clone());
         str1.push_str(ks.file_suffix.as_mut().unwrap());
         ks.full_file_loc = Some(PathBuf::from(str1 + &String::from_utf8(KEYIMAGE_FILE_EXTENSION.to_vec()).unwrap()));
         ks
@@ -89,7 +91,8 @@ impl<C: AffineRepr> CanonicalSerialize for KeyImageStore<C> {
     // We are just always using compressed for now, this may change.
     fn serialized_size(&self, _mode: Compress) -> usize {
         let keys_size = self.keys.len() * 33;
-        let headers_size = APP_DOMAIN_LABEL.len() + 33 + self.keylen.to_be_bytes().len();
+        let headers_size = APP_DOMAIN_LABEL.len() + 8 +
+        self.context_label.len() + 33 + self.keylen.to_be_bytes().len();
         keys_size + headers_size
     }
 
@@ -101,6 +104,8 @@ impl<C: AffineRepr> CanonicalSerialize for KeyImageStore<C> {
     ) -> Result<(), SerializationError> {
         // headers first:
         writer.write(APP_DOMAIN_LABEL)?;
+        writer.write(&self.context_label.len().to_be_bytes())?;
+        writer.write(self.context_label.as_bytes())?;
         self.basepoint.unwrap().serialize_with_mode(&mut writer, compress)?;
         // length of keylist makes deserializing easier
         writer.write(&self.keys.len().to_be_bytes())?;
@@ -125,6 +130,13 @@ impl<C: AffineRepr> CanonicalDeserialize for KeyImageStore<C> {
             // and then reject it, not crash.
             panic!("Invalid app domain for keyimagestore");
         }
+        // read the length of the context label, then the context label,
+        // then sanity check that it fits our config:
+        let mut bufcllen = [0; 8];
+        reader.read(&mut bufcllen)?;
+        let cllen = usize::from_be_bytes(bufcllen);
+        let mut bufcl = vec![0; cllen];
+        reader.read(&mut bufcl)?;
         let basepoint = C::deserialize_with_mode(&mut reader, compress, validate)?;
         let mut b = Vec::new();
         basepoint.serialize_compressed(&mut b).expect("Failed to serialize point");
@@ -133,11 +145,12 @@ impl<C: AffineRepr> CanonicalDeserialize for KeyImageStore<C> {
         let keylen = u64::from_be_bytes(buf2);
         let mut keys_in: Vec<C> = Vec::new();
         // there should be a syntax for this without looping?
-        for _ in 1..keylen {
+        for _ in 0..keylen {
             keys_in.push(C::deserialize_with_mode(&mut reader, compress, validate)?);
         }
         Ok(Self {
             name: String::from_utf8(APP_DOMAIN_LABEL.to_vec()).unwrap(),
+            context_label: String::from_utf8(bufcl).unwrap(),
             // note that the deserialize method is making an object in-mem
             // from persistence, so it doesn't (sometimes)
             // care about filepaths:
@@ -177,13 +190,16 @@ pub fn create_new_store<
     (autctcfg: AutctConfig) -> Result<KeyImageStore<Affine<P0>>, KeyImageStoreExistsError> {
     let name = APP_DOMAIN_LABEL;
     // get the J value from the config
-    let J = get_generators::<F, P0>(name);
+    println!("Using cofig: {:?}", autctcfg.context_label.clone().unwrap());
+    let J = get_generators::<F, P0>(&autctcfg.context_label.clone().unwrap().into_bytes());
     // is there a less ugly way to go from &[u8] to String?
     let mut ks = KeyImageStore::<Affine<P0>>::new(
         Some(autctcfg.keyimage_filename_suffix.unwrap()),
         String::from_utf8(name.to_vec()).unwrap(),
+        autctcfg.context_label.unwrap(),
          Some(J));
     // in here place the 'does this file exist?' check
+    println!("Got ffl: {:?}", &ks.full_file_loc.clone().unwrap());
     if Path::exists(&ks.full_file_loc.clone().unwrap()) {
         Err(KeyImageStoreExistsError { filename: ks.full_file_loc.unwrap()})
     }
@@ -218,11 +234,12 @@ mod tests {
     #[test]
     fn run_test_cases() {
         type F = <ark_secp256k1::Affine as AffineRepr>::BaseField;
-        let cfg = AutctConfig::default();
+        let mut cfg = AutctConfig::default();
+        cfg.context_label = Some("keyimagestore-tests-001".to_string());
         let mut ks = create_new_store::<F, SecpConfig>(cfg).unwrap();
         let mut rng = rand::thread_rng();
-        let mut x: Vec<Affine<SecpConfig>> = Vec::with_capacity(10);
-        for _ in 1..11 {
+        let mut x: Vec<Affine<SecpConfig>> = Vec::with_capacity(100);
+        for _ in 1..101 {
             let random_bytes = rng.gen::<[u8; 32]>();
             x.push(affine_from_bytes_tai(&random_bytes));
         }
@@ -234,17 +251,18 @@ mod tests {
         let cursor = Cursor::new(file_contents);
         let new_ks = KeyImageStore::<Affine<SecpConfig>>::deserialize_with_mode(cursor,
             Compress::Yes, Validate::No).unwrap();
+        // remove file for next test
+        fs::remove_file(ks.full_file_loc.unwrap()).unwrap();
         // TODO: can we apply some derive "equals" trait so we can directly compare that the objects are identical?
         // in any case, let's do some random comparisons:
-        //let rand_sample_indices = [2, 7, 44, 85];
-        let rand_sample_indices = [2, 7, 4, 8];
+        let rand_sample_indices = [0, 2, 7, 4, 8, 99];
         for i in rand_sample_indices {
             assert_eq!(ks.keys[i], new_ks.keys[i]);
             assert_eq!(new_ks.is_key_in_store(ks.keys[i]), true)
         };
         // Check that keys that aren't in the store are reported as such
-        let mut y: Vec<Affine<SecpConfig>> = Vec::with_capacity(10);
-        for _ in 1..11 {
+        let mut y: Vec<Affine<SecpConfig>> = Vec::with_capacity(100);
+        for _ in 1..101 {
             let random_bytes = rng.gen::<[u8; 32]>();
             y.push(affine_from_bytes_tai(&random_bytes));
         }
