@@ -1,3 +1,4 @@
+use autct::utils::APP_DOMAIN_LABEL;
 use toy_rpc::Client;
 use autct::config::AutctConfig;
 
@@ -11,13 +12,19 @@ pub async fn do_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let host: &str= &autctcfg.rpc_host.unwrap();
     let port_str: &str = &rpc_port.unwrap().to_string();
     let addr: String = format!("{}:{}", host, port_str);
-    let pubkey_file_str = autctcfg.keyset.unwrap();
     let proof_file_str = autctcfg.proof_file_str.unwrap();
     let buf = fs::read(proof_file_str).unwrap();
+    let req: RPCProofVerifyRequest = RPCProofVerifyRequest {
+        keyset: autctcfg.keyset.unwrap(),
+        user_label: autctcfg.user_string.unwrap(),
+        context_label: autctcfg.context_label.unwrap(),
+        application_label: String::from_utf8(APP_DOMAIN_LABEL.to_vec()).unwrap(),
+        proof: buf,
+    };
     let mut client = Client::dial(&addr).await.unwrap();
     client.set_default_timeout(std::time::Duration::from_secs(3));
-    let result: i32 = client
-    .r_p_c_proof_verifier().verify((pubkey_file_str, buf))
+    let result: RPCProofVerifyResponse = client
+    .r_p_c_proof_verifier().verify(req)
     .await
     .unwrap();
     // Result 1 means verification passed

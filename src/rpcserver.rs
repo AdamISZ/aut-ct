@@ -61,8 +61,6 @@ pub async fn do_serve<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<d
             G: G2,
             H: H2,
             J: J2,
-            context_label: autctcfg.context_label.unwrap(),
-            user_string: autctcfg.user_string.unwrap(),
             ks: ksm}
     );
     let server = Server::builder()

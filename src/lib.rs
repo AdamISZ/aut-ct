@@ -16,7 +16,7 @@ use peddleq::PedDleqProof;
 use autctverifier::verify_curve_tree_proof;
 use bulletproofs::r1cs::R1CSProof;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
-
+use serde_derive::{Deserialize, Serialize};
 use relations::curve_tree::SelectAndRerandomizePath;
 
 use merlin::Transcript;
@@ -34,10 +34,34 @@ pub mod rpc {
     use std::sync::{Arc, Mutex};
     use relations::curve_tree::{CurveTree, SelRerandParameters};
 
+    #[derive(Serialize, Deserialize)]
+    pub struct RPCProofVerifyRequest {
+        pub keyset: String,
+        pub user_label: String,
+        pub context_label: String,
+        pub application_label: String,
+        pub proof: Vec<u8>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct RPCProofVerifyResponse {
+            pub keyset: String,
+            pub user_label: String,
+            pub context_label: String,
+            pub application_label: String,
+            pub accepted: i32,
+            pub resource_string: Option<String>,
+            pub key_image: Option<String>,
+    }
+    // This struct encapsulates the state maintained by the verifying
+    // server (mostly to make the actual rea-time verification fast)
+    // Note that this does NOT currently include the context label,
+    // allowing the verifier to 'blindly' serve requests for any context;
+    // the callback code that ends up assiging resource strings to users,
+    // should be able to decide the business logic of that based on the
+    // context label given in the Request object.
     pub struct RPCProofVerifier<const L: usize>{
         pub pubkey_filepath: String,
-        pub context_label: String,
-        pub user_string: String,
         pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
         pub curve_tree: CurveTree<L, SecpConfig, SecqConfig>,
         pub G: Affine<SecpConfig>,
@@ -63,8 +87,20 @@ pub mod rpc {
         // -2 means that the PedDLEQ proof for the rerandomized key does not validate.
         // -3 Means that the proofs are valid but the key image is rejected
         //    as a double spend.
-        pub async fn verify(&self, args: (String, Vec<u8>)) -> Result<i32, String>{
-            let (pubkey_filepath, buf) = args;
+        pub async fn verify(&self, args: RPCProofVerifyRequest) -> Result<RPCProofVerifyResponse, String>{
+            let verif_request = args;
+
+            let mut resp: RPCProofVerifyResponse = RPCProofVerifyResponse{
+                keyset: self.pubkey_filepath.clone(),
+                // note that this must be set by the *caller*:
+                user_label: verif_request.user_label.clone(),
+                application_label: String::from_utf8(APP_DOMAIN_LABEL.to_vec()).unwrap(),
+                context_label: verif_request.context_label.clone(),
+                accepted: -100,
+                resource_string: None,
+                key_image: None,
+            };
+
             // TODO:
             // For now, we just check that the pubkey file requested
             // by the client corresponds to the keyset chosen by this process
@@ -75,8 +111,12 @@ pub mod rpc {
             // verification calls.
             // Also we want to be able to return sensible errors like
             // "that pubkey set's curve tree does not exist/is not yet loaded".
-            assert_eq!(pubkey_filepath, self.pubkey_filepath);
-            let mut cursor = Cursor::new(buf);
+            if !(verif_request.keyset == self.pubkey_filepath) {
+                resp.accepted = -4;
+                return Ok(resp);
+            }
+
+            let mut cursor = Cursor::new(verif_request.proof);
             // deserialize the components of the PedDLEQ proof first and verify it:
             let D = Affine::<SecpConfig>::deserialize_compressed(
                 &mut cursor).expect("Failed to deserialize D");
@@ -85,30 +125,40 @@ pub mod rpc {
             let proof = PedDleqProof::<Affine<SecpConfig>>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).unwrap();
             let mut transcript = Transcript::new(APP_DOMAIN_LABEL);
-            if !(proof
-                    .verify(
-                        &mut transcript,
-                        &D,
-                        &E,
-                        &self.G,
-                        &self.H,
-                        &self.J,
-                        self.context_label.as_bytes(),
-                        self.user_string.as_bytes()
-                    )
-                    .is_ok()){
+            let verif_result = proof
+            .verify(
+                &mut transcript,
+                &D,
+                &E,
+                &self.G,
+                &self.H,
+                &self.J,
+                verif_request.context_label.as_bytes(),
+                verif_request.user_label.as_bytes()
+            );
+            let mut b_E = Vec::new();
+            E.serialize_compressed(&mut b_E).expect("Failed to serialize point");
+            let str_E = hex::encode(&b_E).to_string();
+            if !verif_result
+                    .is_ok(){
                         println!("PedDLEQ proof is invalid");
-                        return Ok(-2);
+                        resp.accepted = -2;
+                        resp.key_image = Some(str_E);
+                        return Ok(resp);
                     }
             // check early if the now-verified key image (E) is a reuse-attempt:
             if self.ks.lock().unwrap().is_key_in_store(E) {
                 println!("Reuse of key image disallowed: ");
                 print_affine_compressed(E, "Key image value");
-                return Ok(-3);
+                resp.accepted = -3;
+                resp.key_image = Some(str_E);
+                return Ok(resp);
             }
             // if it isn't, then it counts as used now:
             self.ks.lock().unwrap().add_key(E).expect("Failed to add keyimage to store.");
             // Next, we deserialize and validate the curve tree proof.
+            // TODO replace these `expect()` calls; we need to return
+            // an 'invalid proof format' error if they send us junk, not crash!
             let p0proof = 
             R1CSProof::<Affine<SecpConfig>>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).expect("Failed p0proof deserialize");
@@ -127,22 +177,27 @@ pub mod rpc {
                 path.clone(), &self.sr_params, &self.curve_tree, p0proof, p1proof, prover_root);
             let claimed_D_result = match claimed_D {
                 Ok(x) => x,
-                Err(_x) => return Ok(-1),
+                Err(_x) => {
+                    resp.accepted = -1;
+                    resp.key_image = Some(str_E);
+                    return Ok(resp)},
             };
             println!("Elapsed time for verify_curve_tree_proof: {:.2?}", timer1.elapsed());
             // TODO check if any reuse is possible with sign flip:
             if claimed_D_result != D && claimed_D_result != -D {
                 println!("Curve tree proof did not match PedDLEQ proof");
-                Ok(-1)
+                resp.accepted = -1;
+                resp.key_image = Some(str_E);
+                Ok(resp)
             }
             else {
-                // 4: If not assertion error, print out that it passed.
-                let mut bufEfinal: Vec<u8> = Vec::new();
-                E.serialize_compressed(&mut bufEfinal).expect("failed to serialize E");
-                println!("Verifying curve tree passed and it matched the key image. Here is the key image: {:?}",
-                hex::encode(&bufEfinal));
-                // TODO here will be a check whether the token (=key image) passes, i.e. was it already used and stored.
-                Ok(1)
+                // All checks successful, return resource
+                println!("Verifying curve tree passed and it matched the key image. Here is the key image: {}",
+                str_E);
+                resp.accepted = 1;
+                resp.resource_string = Some("soup-for-you".to_string());
+                resp.key_image = Some(str_E);
+                Ok(resp)
             }
         }
     }
@@ -163,7 +218,7 @@ pub mod rpc {
             >,
         ) -> toy_rpc::service::HandlerResultFut {
             Box::pin(async move {
-                let req: (String, Vec<u8>) = toy_rpc::erased_serde::deserialize(
+                let req: RPCProofVerifyRequest = toy_rpc::erased_serde::deserialize(
                         &mut deserializer,
                     )
                     .map_err(|e| toy_rpc::error::Error::ParseError(Box::new(e)))?;
@@ -200,9 +255,9 @@ pub mod rpc {
         service_name: &'c str,
     }
     impl<'c, AckMode> RPCProofVerifierClient<'c, AckMode> {
-        pub fn verify<A>(&'c self, args: A) -> toy_rpc::client::Call<i32>
+        pub fn verify<A>(&'c self, args: A) -> toy_rpc::client::Call<RPCProofVerifyResponse>
         where
-            A: std::borrow::Borrow<(String, Vec<u8>)> + Send + Sync
+            A: std::borrow::Borrow<RPCProofVerifyRequest> + Send + Sync
                 + toy_rpc::serde::Serialize + 'static,
         {
             self.client.call("RPCProofVerifier.verify", args)
