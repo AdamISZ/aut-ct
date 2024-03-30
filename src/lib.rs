@@ -33,22 +33,20 @@ pub mod rpc {
     use super::*;
     use std::sync::{Arc, Mutex};
     use relations::curve_tree::{CurveTree, SelRerandParameters};
-    use toy_rpc::macros::export_impl;
 
-    pub struct RPCProofVerifier{
+    pub struct RPCProofVerifier<const L: usize>{
         pub pubkey_filepath: String,
         pub context_label: String,
         pub user_string: String,
         pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
-        pub curve_tree: CurveTree<{BRANCHING_FACTOR}, SecpConfig, SecqConfig>,
+        pub curve_tree: CurveTree<L, SecpConfig, SecqConfig>,
         pub G: Affine<SecpConfig>,
         pub H: Affine<SecpConfig>,
         pub J: Affine<SecpConfig>,
         pub ks: Arc<Mutex<keyimagestore::KeyImageStore<Affine<SecpConfig>>>>,
     }
 
-    #[export_impl]
-    impl RPCProofVerifier {
+    impl<const L: usize> RPCProofVerifier<{L}> {
 
         // currently the only request in the API:
         // the two arguments are:
@@ -63,11 +61,8 @@ pub mod rpc {
         // -1 means the PedDLEQ proof for the rerandomized key is itself valid,
         // but that same rerandomized key does not verify against the Curve Tree.
         // -2 means that the PedDLEQ proof for the rerandomized key does not validate.
-        // -3 (TODO) would mean that the proofs are valid but the key image is rejected
+        // -3 Means that the proofs are valid but the key image is rejected
         //    as a double spend.
-        // -4 The filename does not match the keyset which the RPC server is using (TODO,
-        //    this will be removed, see other comments below about this.)
-        #[export_method]
         pub async fn verify(&self, args: (String, Vec<u8>)) -> Result<i32, String>{
             let (pubkey_filepath, buf) = args;
             // TODO:
@@ -109,7 +104,7 @@ pub mod rpc {
             if self.ks.lock().unwrap().is_key_in_store(E) {
                 println!("Reuse of key image disallowed: ");
                 print_affine_compressed(E, "Key image value");
-                return Ok(-4);
+                return Ok(-3);
             }
             // if it isn't, then it counts as used now:
             self.ks.lock().unwrap().add_key(E).expect("Failed to add keyimage to store.");
@@ -121,7 +116,7 @@ pub mod rpc {
             R1CSProof::<Affine<SecqConfig>>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).expect("Failed p1proof deserialize");
             let path = 
-            SelectAndRerandomizePath::<{BRANCHING_FACTOR}, SecpConfig, SecqConfig>::deserialize_with_mode(
+            SelectAndRerandomizePath::<L, SecpConfig, SecqConfig>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).expect("failed path deserialize");
 
             // TODO this is part of the 'can we handle different root parity' problem:
@@ -148,6 +143,80 @@ pub mod rpc {
                 hex::encode(&bufEfinal));
                 // TODO here will be a check whether the token (=key image) passes, i.e. was it already used and stored.
                 Ok(1)
+            }
+        }
+    }
+
+    // NOTE: The remaining code here is the expanded-out
+    // code from using the macros `export_impl` and `export_method`
+    // which previously were used for the above RPCProofVerifier
+    // and verify() code (use `cargo expand --lib rpc > toafile.txt`).
+    // The reason for this ugly/janky choice is that these macros do
+    // not (as far as I can tell) support const generics, and throw
+    // compilation error if you try to use them on a struct with such
+    // a const generic, so I expanded out the macros and re-added L by hand.
+    impl<const L: usize> RPCProofVerifier<{L}> {
+        pub fn verify_handler(
+            self: std::sync::Arc<Self>,
+            mut deserializer: Box<
+                dyn toy_rpc::erased_serde::Deserializer<'static> + Send,
+            >,
+        ) -> toy_rpc::service::HandlerResultFut {
+            Box::pin(async move {
+                let req: (String, Vec<u8>) = toy_rpc::erased_serde::deserialize(
+                        &mut deserializer,
+                    )
+                    .map_err(|e| toy_rpc::error::Error::ParseError(Box::new(e)))?;
+                self.verify(req)
+                    .await
+                    .map(|r| {
+                        Box::new(r)
+                            as Box<
+                                dyn toy_rpc::erased_serde::Serialize + Send + Sync + 'static,
+                            >
+                    })
+                    .map_err(|err| err.into())
+            })
+        }
+    }
+    impl<const L: usize> toy_rpc::util::RegisterService for RPCProofVerifier<{L}> {
+        fn handlers() -> std::collections::HashMap<
+            &'static str,
+            toy_rpc::service::AsyncHandler<Self>,
+        > {
+            let mut map = std::collections::HashMap::<
+                &'static str,
+                toy_rpc::service::AsyncHandler<RPCProofVerifier<L>>,
+            >::new();
+            map.insert("verify", RPCProofVerifier::verify_handler);
+            map
+        }
+        fn default_name() -> &'static str {
+            "RPCProofVerifier"
+        }
+    }
+    pub struct RPCProofVerifierClient<'c, AckMode> {
+        client: &'c toy_rpc::client::Client<AckMode>,
+        service_name: &'c str,
+    }
+    impl<'c, AckMode> RPCProofVerifierClient<'c, AckMode> {
+        pub fn verify<A>(&'c self, args: A) -> toy_rpc::client::Call<i32>
+        where
+            A: std::borrow::Borrow<(String, Vec<u8>)> + Send + Sync
+                + toy_rpc::serde::Serialize + 'static,
+        {
+            self.client.call("RPCProofVerifier.verify", args)
+        }
+    }
+    pub trait RPCProofVerifierClientStub<AckMode> {
+        fn r_p_c_proof_verifier<'c>(&'c self) -> RPCProofVerifierClient<AckMode>;
+    }
+    impl<AckMode> RPCProofVerifierClientStub<AckMode>
+    for toy_rpc::client::Client<AckMode> {
+        fn r_p_c_proof_verifier<'c>(&'c self) -> RPCProofVerifierClient<AckMode> {
+            RPCProofVerifierClient {
+                client: self,
+                service_name: "RPCProofVerifier",
             }
         }
     }

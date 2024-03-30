@@ -2,7 +2,7 @@
 
 use ark_serialize::{ CanonicalDeserialize, 
     Compress, Validate};
-use autct::utils::APP_DOMAIN_LABEL;
+use autct::utils::{get_curve_tree, APP_DOMAIN_LABEL};
 use tokio::{task, net::TcpListener};
 use std::fs;
 use std::io::Cursor;
@@ -12,7 +12,6 @@ use toy_rpc::Server;
 
 
 use autct::{rpc::RPCProofVerifier, utils};
-use autct::autctverifier::get_curve_tree;
 use autct::config::AutctConfig;
 use autct::keyimagestore::{KeyImageStore, create_new_store};
 use relations::curve_tree::SelRerandParameters;
@@ -21,7 +20,7 @@ use ark_secq256k1::Config as SecqConfig;
 use ark_ec::short_weierstrass::{Affine, SWCurveConfig};
 
 
-pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+pub async fn do_serve<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let pubkey_filepath2 = autctcfg.keyset.clone().unwrap();
     let rpc_port = autctcfg.rpc_port.unwrap();
     let host: &str= &autctcfg.rpc_host.clone().unwrap();
@@ -33,7 +32,7 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
                 generators_length,
                 generators_length, &mut rng);
     let (curve_tree2, H2) = get_curve_tree::
-        <{autct::utils::BRANCHING_FACTOR}, SecpBase, SecpConfig, SecqConfig>(
+        <L, SecpBase, SecpConfig, SecqConfig>(
         &pubkey_filepath2,
         autctcfg.depth.unwrap().try_into().unwrap(), &sr_params2);
     let G2 = SecpConfig::GENERATOR;

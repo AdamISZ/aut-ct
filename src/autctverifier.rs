@@ -4,8 +4,6 @@ extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
 
-use crate::utils;
-
 use bulletproofs::r1cs::R1CSError;
 use bulletproofs::r1cs::R1CSProof;
 use bulletproofs::r1cs::Verifier;
@@ -99,21 +97,5 @@ pub fn verify_curve_tree_proof<
     Ok(path_commitments.get_rerandomized_leaf())
 }
 
-pub fn get_curve_tree<
-const L: usize,
-F: PrimeField,
-P0: SWCurveConfig<BaseField = F> + Copy,
-P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
-    file_loc: &str,
-    depth: usize,
-    sr_params: &SelRerandParameters<P0, P1>) -> (CurveTree<L, P0, P1>, Affine<P0>){
-    let leaf_commitments = utils::get_leaf_commitments(file_loc);
-    let (permissible_points,
-        _permissible_randomnesses) =
-        utils::create_permissible_points_and_randomnesses(&leaf_commitments, sr_params);
-    let curve_tree = CurveTree::<L, P0, P1>::from_set(
-        &permissible_points, sr_params, Some(depth));
-    assert_eq!(curve_tree.height(), depth);
-    (curve_tree, sr_params.even_parameters.pc_gens.B_blinding)
-}
+
 

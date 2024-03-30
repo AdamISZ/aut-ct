@@ -97,7 +97,7 @@ As probably obvious, the idea here is that we run a service (somewhere) for a cl
 "request":
 
 ```
-./autct --keyset autct-830000-500000-0-2-1024.aks -P proof.txt
+./autct -M request --keyset autct-830000-500000-0-2-1024.aks -P proof.txt
 ```
 
 This client connects to the above server and calls the `verify()` function with a binary string taken directly from the file specified with `-P` (`./proof.txt` by default), and should return with `1`. Errors will give negative integers instead.
@@ -109,9 +109,7 @@ In the directory `testdata` there are example pubkey files containing approximat
 There is a config file auto-generated in `~/.config/autct/default-config.toml` (or similar).
 Precedence operation is as you would expect: command line options take precedence over config file values, and be aware updates (i.e. just choosing a different option in a command line call) will be persisted to that config file. Third in order of precedence is the default value. As noted, two "options" (`-M` and `-k`) are required to be specified always.
 
-Note that a current TODO is that the branching_factor field is not currently being used, but the others are. If you need to change it, edit it at the top of `utils.rs` and then recompile, until this is fixed.
-
-The depth is the depth of the curve tree. The `generators_length_log_2` may be removed in future but it should be the smallest power of 2 that's bigger than `D(912+L-1)` where `D` is the depth and `L` is the branching factor. If it helps, for key sets less than 64000 in size, the defaults should be fine. The rpc port can also be configured here.
+The depth and branching factor are the parameters of the curve tree. The `generators_length_log_2` may be removed in future but it should be the smallest power of 2 that's bigger than `D(912+L-1)` where `D` is the depth and `L` is the branching factor. If it helps, for key sets less than 64000 in size, the defaults should be fine. The rpc port can also be configured here.
 
 Finally, to actually *use* this as a tool, one should (in most cases) set the `context_label` field, using `-c` to something agreed by the verifier as defining usage in a particular domain, and the `user_string` with `-u` to a hex serialized BIP340 pubkey or alternate user string (see [here](./docs/protocol-utxo.md) Appendix 2). This defines the scope of usage of the resources represented by the (u)txo.
 

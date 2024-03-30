@@ -8,6 +8,7 @@ use ark_ff::PrimeField;
 use ark_ec::AffineRepr;
 use ark_ec::short_weierstrass::SWCurveConfig;
 use ark_ec::short_weierstrass::Affine;
+use relations::curve_tree::CurveTree;
 use std::io::Error;
 use std::fs;
 use std::path::PathBuf;
@@ -17,7 +18,7 @@ use relations::curve_tree::SelRerandParameters;
 // all transcripts created in this project should be
 // initialized with this name:
 pub const APP_DOMAIN_LABEL: &[u8] = b"autct-v1.0";
-pub const BRANCHING_FACTOR: usize = 1024;
+pub const BRANCHING_FACTOR: usize = 256;
 // specific to an application; this default is only for tests.
 // Should be set in the config file, in the field `context_label`.
 pub const CONTEXT_LABEL: &[u8] = b"default-app-context-label";
@@ -171,4 +172,21 @@ pub fn create_permissible_points_and_randomnesses<
                 .permissible_commitment(commitment, &sr_params.even_parameters.pc_gens.B_blinding)
         })
         .unzip()
+}
+
+pub fn get_curve_tree<
+const L: usize,
+F: PrimeField,
+P0: SWCurveConfig<BaseField = F> + Copy,
+P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
+    file_loc: &str,
+    depth: usize,
+    sr_params: &SelRerandParameters<P0, P1>) -> (CurveTree<L, P0, P1>, Affine<P0>){
+    let leaf_commitments = get_leaf_commitments(file_loc);
+    let (permissible_points,
+        _permissible_randomnesses) =
+        create_permissible_points_and_randomnesses(&leaf_commitments, sr_params);
+    let curve_tree = CurveTree::<L, P0, P1>::from_set(
+        &permissible_points, sr_params, Some(depth));
+    (curve_tree, sr_params.even_parameters.pc_gens.B_blinding)
 }

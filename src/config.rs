@@ -26,27 +26,38 @@ https://stackoverflow.com/a/75981247
 #[command(about, long_about = None, next_line_help = true)]
 #[clap(version, about="Anonymous Usage Tokens from Curve Trees")]
 pub struct AutctConfig {
-    // the argument `mode` is one of "prove", "serve", "request"
+    /// The argument `mode` is one of "prove", "serve", "request"
     #[arg(short('M'), long, required=true)]
+    #[clap(verbatim_doc_comment)]
     pub mode: Option<String>,
     #[arg(short('V'), long, required=false)]
     pub version: Option<u8>,
-    // see docs/protocol_utxo.md for details on the meaning
-    // encoded in this (file)name (though for testing you can use anything)
+    /// See docs/protocol_utxo.md for details on the meaning
+    /// encoded in this (file)name (though for testing you can use anything)
     #[arg(short('k'), long, required=true)]
+    #[clap(verbatim_doc_comment)]
     pub keyset: Option<String>,
+    /// This specifies the use-case "realm"
+    /// over which tokens cannot be reused.
     #[arg(short('c'), long, required=false)]
+    #[clap(verbatim_doc_comment)]
     pub context_label: Option<String>,
-    // intended as a BIP-340-hex encoding of a secp256k1 point,
-    // though again, anything is allowed:
+    /// Intended as a BIP-340-hex encoding of a secp256k1 point,
+    /// though anything is allowed:
     #[arg(short('u'), long, required=false)]
-    // depth of the Curve Tree
+    #[clap(verbatim_doc_comment)]
     pub user_string: Option<String>,
+    /// The depth of the curve tree, which
+    /// must be even. The default 2 is recommended,
+    /// but experimenting with 4 or higher is possible.
     #[arg(short('d'), long, required=false)]
+    #[clap(verbatim_doc_comment)]
     pub depth: Option<i32>,
-    // branching factor of the Curve Tree
-    // (TODO this is currently ignored)
+    /// Branching factor of the Curve Tree.
+    /// Note that only 3 values are currently supported:
+    /// 256, 512, 1024
     #[arg(short('b'), long, required=false)]
+    #[clap(verbatim_doc_comment)]
     pub branching_factor: Option<i32>,
     // log-size of generator set used in Bulletproofs
     // TODO this can be calculated dynamically
@@ -60,18 +71,21 @@ pub struct AutctConfig {
     /// Print additional information in the terminal
     #[arg(short('v'), long, required = false)]
     verbose: Option<bool>,
-    // only required for prover, destination
-    // file for the binary string which is the proof
+    /// Only required for prover, destination
+    /// file for the binary string which is the proof
     #[arg(short('P'), long, required = false)]
+    #[clap(verbatim_doc_comment)]
     pub proof_file_str: Option<String>,
-    // file containing hex-encoded 32 byte serialization
+    // File containing hex-encoded 32 byte serialization
     // of private key
     #[arg(short('i'), long, required=false)]
+    #[clap(verbatim_doc_comment)]
     pub privkey_file_str: Option<String>,
-    // filename suffix for keyimage files (there is
-    // a different file for every (app domain label,
-    // context label) pair).
+    /// filename suffix for keyimage files (there is
+    /// a different file for every (app domain label,
+    /// context label) pair).
     #[arg(long, required=false)]
+    #[clap(verbatim_doc_comment)]
     pub keyimage_filename_suffix: Option<String>,
 }
 

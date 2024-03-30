@@ -16,7 +16,7 @@ use ark_ec::{AffineRepr, short_weierstrass::SWCurveConfig, CurveGroup};
 use ark_ff::{PrimeField, Zero, One};
 use ark_serialize::{
     CanonicalSerialize, Compress};
-use relations::curve_tree::{SelRerandParameters, CurveTree, SelectAndRerandomizePath};
+use relations::curve_tree::{SelRerandParameters, SelectAndRerandomizePath};
 use std::error::Error;
 use std::ops::{Mul, Add};
 use merlin::Transcript;
@@ -82,11 +82,8 @@ pub fn get_curve_tree_with_proof<
         }
     };
 
-    let (permissible_points, _permissible_randomnesses) =
-        create_permissible_points_and_randomnesses::<F, P0, P1>(&leaf_commitments, &sr_params);
-
-    let curve_tree = CurveTree::<L, P0, P1>::from_set(
-        &permissible_points, &sr_params, Some(depth));
+    let (curve_tree, _) = get_curve_tree::<L, F, P0, P1>(
+        pubkey_file_path, depth, &sr_params);
     assert_eq!(curve_tree.height(), depth);
 
     let (path_commitments, rand_scalar) =
@@ -148,17 +145,36 @@ pub fn get_curve_tree_with_proof<
 async fn main() -> Result<(), Box<dyn Error>>{
 
     let autctcfg = AutctConfig::build()?;
+    // TODO maybe remove this code duplication?
+    // The problem is that `L`, the branching factor of tree,
+    // *must* be a const generic, as I understand it,
+    // and we must return a tree with a specific value of that
+    // const usize integer. I'm not sure if we can do that
+    // with a macro, or if it's worth it to remove this
+    // minor duplication.
     match autctcfg.clone().mode.unwrap().as_str() {
-        "prove" => {return run_prover(autctcfg)},
+        "prove" => {match autctcfg.branching_factor {
+                        Some(256) => return run_prover::<256>(autctcfg),
+                        Some(512) => return run_prover::<512>(autctcfg),
+                        Some(1024) => return run_prover::<1024>(autctcfg),
+                        _ => {panic!("Invalid branching factor")},
+                        }
+                    },
         "request" => {return rpcclient::do_request(autctcfg).await},
-        "serve" => {return rpcserver::do_serve(autctcfg).await},
+        "serve" => {match autctcfg.branching_factor {
+                        Some(256) => return rpcserver::do_serve::<256>(autctcfg).await,
+                        Some(512) => return rpcserver::do_serve::<512>(autctcfg).await,
+                        Some(1024) => return rpcserver::do_serve::<1024>(autctcfg).await,
+                        _ => {panic!("Invalid branching factor")},
+                        }
+                    },
         _ => {println!("Invalid mode, must be 'prove', 'serve' or 'request'")},
 
     }
     Ok(())
 }
 
-fn run_prover(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     // read privkey from file
     let privkey_file_str = autctcfg.privkey_file_str.unwrap();
@@ -176,7 +192,7 @@ fn run_prover(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     H,
     root,
     privkey_parity_flip) = get_curve_tree_with_proof::<
-    {BRANCHING_FACTOR},
+    L,
     SecpBase,
     SecpConfig,
     SecqConfig>(
