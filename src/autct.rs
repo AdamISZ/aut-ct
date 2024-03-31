@@ -160,7 +160,7 @@ async fn main() -> Result<(), Box<dyn Error>>{
                         _ => {panic!("Invalid branching factor")},
                         }
                     },
-        "request" => {return rpcclient::do_request(autctcfg).await},
+        "request" => {return run_request(autctcfg).await},
         "serve" => {match autctcfg.branching_factor {
                         Some(256) => return rpcserver::do_serve::<256>(autctcfg).await,
                         Some(512) => return rpcserver::do_serve::<512>(autctcfg).await,
@@ -174,6 +174,25 @@ async fn main() -> Result<(), Box<dyn Error>>{
     Ok(())
 }
 
+async fn run_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
+    let res = rpcclient::do_request(autctcfg).await;
+    match res {
+        Ok(rest) => {
+        // codes defined in lib.rs
+        // TODO: create some callback structure to receive the resource
+            match rest.accepted {
+                1 => println!("We received this resource: {}", rest.resource_string.unwrap()),
+                -1 => println!("Request rejected, PedDLEQ proof does not match the tree."),
+                -2 => println!("Request rejected, PedDLEQ proof is invalid."),
+                -3 => println!("Request rejected, proofs are valid but key image is reused."),
+                -4 => println!("Request rejected, keyset chosen does not match the server's."),
+                _ => println!("Unrecognized error code from server?"),
+            }
+        },
+        Err(rest) => return Err(rest),
+    };
+    Ok(())
+}
 fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     // read privkey from file

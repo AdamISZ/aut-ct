@@ -67,7 +67,7 @@ To select a utxo U, it must check:
 Then create the AUT-CT token with an execution of the algorithm:
 Input: (utxo U, pubkey P, private key x, keyset S, application-label lA, context-label lC, user-label lU)
 
-Note that the *Curve Tree* object is constructed as an intermediate step of the proving algorithm. That this Tree is unambiguously defined by the "keyset" is explained in Appendix 1.
+Note that the *Curve Tree* object is constructed as an pre-processing step of the proving algorithm. That this Tree is unambiguously defined by the "keyset" is explained in Appendix 1.
 
 Output `proof`: a single binary string. The typical size is 3kB.
 

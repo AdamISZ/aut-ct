@@ -7,7 +7,7 @@ use autct::rpc::*;
 use std::error::Error;
 use std::fs;
 
-pub async fn do_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+pub async fn do_request(autctcfg: AutctConfig) -> Result<RPCProofVerifyResponse, Box<dyn Error>>{
     let rpc_port = autctcfg.rpc_port;
     let host: &str= &autctcfg.rpc_host.unwrap();
     let port_str: &str = &rpc_port.unwrap().to_string();
@@ -27,9 +27,6 @@ pub async fn do_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     .r_p_c_proof_verifier().verify(req)
     .await
     .unwrap();
-    // Result 1 means verification passed
-    // TODO result will contain resource gained from usage
-    println!("{:?}", result);
-    Ok(())
+    Ok(result)
 }
 

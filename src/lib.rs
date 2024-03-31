@@ -87,6 +87,7 @@ pub mod rpc {
         // -2 means that the PedDLEQ proof for the rerandomized key does not validate.
         // -3 Means that the proofs are valid but the key image is rejected
         //    as a double spend.
+        // -4 means that the keyset chosen does not match (see below)
         pub async fn verify(&self, args: RPCProofVerifyRequest) -> Result<RPCProofVerifyResponse, String>{
             let verif_request = args;
 
@@ -195,6 +196,8 @@ pub mod rpc {
                 println!("Verifying curve tree passed and it matched the key image. Here is the key image: {}",
                 str_E);
                 resp.accepted = 1;
+                // TODO create some callback structure to generate
+                // the resource (probably taking the full Request as argument)
                 resp.resource_string = Some("soup-for-you".to_string());
                 resp.key_image = Some(str_E);
                 Ok(resp)
