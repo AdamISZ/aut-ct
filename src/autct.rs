@@ -181,7 +181,8 @@ async fn run_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
         // codes defined in lib.rs
         // TODO: create some callback structure to receive the resource
             match rest.accepted {
-                1 => println!("We received this resource: {}", rest.resource_string.unwrap()),
+                // deliberately verbose message here to help testers understand:
+                1 => println!("Request was accepted by the Autct verifier! The proof is valid and the (unknown) pubkey is unused."),
                 -1 => println!("Request rejected, PedDLEQ proof does not match the tree."),
                 -2 => println!("Request rejected, PedDLEQ proof is invalid."),
                 -3 => println!("Request rejected, proofs are valid but key image is reused."),

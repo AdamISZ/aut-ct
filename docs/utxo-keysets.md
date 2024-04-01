@@ -29,10 +29,10 @@ https://github.com/AdamISZ/aut-ct-test-cases/blob/master/src/filter_utxos.py
 
 (See the notes on the repo; install with `pip install .` before running the script).
 
-Example yntax:
+Example syntax:
 
 ```
-python3 filter_utxos 500000 utxos16Mar.sqlite autct-830000-500000-0-2-1024.aks
+python3 filter_utxos.py 500000 utxos16Mar.sqlite autct-830000-500000-0-2-1024.aks
 ```
 
 ... noting that here, I'm using an example of the key filename syntax defined in Appendix 1 [here](./protocol-utxo.md).

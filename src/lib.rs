@@ -50,6 +50,11 @@ pub mod rpc {
             pub context_label: String,
             pub application_label: String,
             pub accepted: i32,
+            // TODO possibly remove this;
+            // the resource string will be the
+            // responsibility of the caller,
+            // for now we just leave a default string
+            // that could be used somehow in future versions:
             pub resource_string: Option<String>,
             pub key_image: Option<String>,
     }
@@ -196,8 +201,7 @@ pub mod rpc {
                 println!("Verifying curve tree passed and it matched the key image. Here is the key image: {}",
                 str_E);
                 resp.accepted = 1;
-                // TODO create some callback structure to generate
-                // the resource (probably taking the full Request as argument)
+                // as per comment in Response struct:
                 resp.resource_string = Some("soup-for-you".to_string());
                 resp.key_image = Some(str_E);
                 Ok(resp)

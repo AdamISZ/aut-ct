@@ -164,9 +164,8 @@ Configuration file: '/home/user/.config/autct/default-config.toml'
 	mode = "request"
 	... other config settings
 	
-We received this resource: soup-for-you
+Request was accepted by the Autct verifier! The proof is valid and the (unknown) pubkey is unused.
 ```
-
 
 (Process currently verified working on Ubuntu 22.04, Debian 12 and Windows 10)
 
