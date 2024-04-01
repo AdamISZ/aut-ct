@@ -198,7 +198,6 @@ pub fn create_new_store<
         String::from_utf8(name.to_vec()).unwrap(),
         autctcfg.context_label.unwrap(),
          Some(J));
-    // in here place the 'does this file exist?' check
     println!("Got ffl: {:?}", &ks.full_file_loc.clone().unwrap());
     if Path::exists(&ks.full_file_loc.clone().unwrap()) {
         Err(KeyImageStoreExistsError { filename: ks.full_file_loc.unwrap()})

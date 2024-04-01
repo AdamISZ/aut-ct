@@ -147,7 +147,8 @@ pub fn get_leaf_commitments<F: PrimeField,
         let x = <Affine<P0> as AffineRepr>::from_random_bytes(&a[..]);
         match x {
             Some(y) => {leaf_commitments.push(y)},
-            None => {println!("Error {:#?}", a);}, // not hex decoding in case invalid? TODO
+            // not hex decoding in case invalid? TODO
+            None => {println!("Invalid pubkey detected, ignoring.");},
         };
     }
     //let leaf_commitments: Vec<Affine<P0>> = b

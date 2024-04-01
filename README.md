@@ -100,9 +100,9 @@ As probably obvious, the idea here is that we run a service (somewhere) for a cl
 ./autct -M request --keyset autct-830000-500000-0-2-1024.aks -P proof.txt
 ```
 
-This client connects to the above server and calls the `verify()` function with a binary string taken directly from the file specified with `-P` (`./proof.txt` by default), and should return with `1`. Errors will give negative integers instead.
+This client connects to the above server and calls the `verify()` function with a binary string taken directly from the file specified with `-P` (`./proof.txt` by default), and should return with a line starting "Resource received: ..". If something is wrong, for example the key image, you will see an error message describing the condition.
 
-In the directory `testdata` there are example pubkey files containing approximately 50K and 100K pubkeys (approx) taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. The private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `068a2b638740814678a2274f537084c0d1ef3ec46a6466b3ca0c2550ac0ebc1f80`. 
+In the directory `testdata` there are example pubkey files containing approximately 50K and 100K pubkeys (approx) taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. Note that these are *not* utxo set dumps, but dumps of keys that were present in that range of blocks. For this reason, the above naming convention (autct-N-M-a-b-c.aks) is not used. For these pubkey sets, the private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `068a2b638740814678a2274f537084c0d1ef3ec46a6466b3ca0c2550ac0ebc1f80` (with the default test labels).
 
 ## Configuring
 
@@ -117,7 +117,7 @@ Finally, to actually *use* this as a tool, one should (in most cases) set the `c
 
 Paths here assume you are in the root of the repository.
 
-Put a hex serialized private key into a file in the current directory called `privkey`:
+Put a hex serialized private key into a file in the current directory called `privkey` (by default; change with `-i`):
 
 ```
 echo 373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf > privkey
@@ -157,7 +157,16 @@ Elapsed time for verify_curve_tree_proof: 49.00ms
 Verifying curve tree passed and it matched the key image. Here is the key image: "068a2b638740814678a2274f537084c0d1ef3ec46a6466b3ca0c2550ac0ebc1f80"
 ```
 
-Output of rpcclient should be just `1` for successful verification. Any negative number means the proof is not valid for the given Curve Tree.
+Output of rpcclient should look like:
+
+```
+Configuration file: '/home/user/.config/autct/default-config.toml'
+	mode = "request"
+	... other config settings
+	
+We received this resource: soup-for-you
+```
+
 
 (Process currently verified working on Ubuntu 22.04, Debian 12 and Windows 10)
 
