@@ -82,9 +82,9 @@ Taking each of the three `mode`s in turn:
 ./autct -M prove --keyset autct-830000-500000-0-2-1024.aks -i privkeyfile
 ```
 
-Note that the private key is read in as hex from the file specified with `-p`, which by default is a local directory file called `privkey`.
+Note that the private key is read in as hex from the file specified with `-i`, which by default is a local directory file called `privkey`.
 
-The file `autct-830000-500000-0-2-1024.aks`, or whatever else is specified (see [here](./docs/protocol-utxo.md) Appendix 1 for filename structure), should contain public keys in formaat: compressed, hex encoded, separated by whitespace, all on one line. The output is sent to the file specified by `-P` (by default `./proof.txt`), which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file, in order to identify the correct index to use in the proof.
+The file `autct-830000-500000-0-2-1024.aks`, or whatever else is specified (see [here](./docs/protocol-utxo.md) Appendix 1 for filename structure), should contain public keys in format: compressed, hex encoded, separated by whitespace, all on one line. The output is sent to the file specified by `-P` (by default `./proof.txt`), which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file, in order to identify the correct index to use in the proof.
 
 "serve":
 
@@ -92,7 +92,7 @@ The file `autct-830000-500000-0-2-1024.aks`, or whatever else is specified (see 
 ./autct -M serve --keyset autct-830000-500000-0-2-1024.aks
 ```
 
-As probably obvious, the idea here is that we run a service (somewhere) for a client to be able to throw serialized proofs at, and ask it to verify (quickly!) if the proof and the corresponding key image actually validate against the curve tree. If so, the user can credit whoever provided this proof, with some kind of token, service access, whatever, and also keep track of what key images have already been used (this code currently doesn't do that but it's the trivial part: just keep a list of used key images, and check). Here "quickly" should be in the 50-100ms range, for even up to millions of pubkeys. The RPC server takes a few seconds to start (loading precomputation tables and constructing the Curve Tree), and then serves on port as specified with `-p` at host specified with `-H` (default 127.0.0.1:23333).
+As probably obvious, the idea here is that we run a service (somewhere) for a client to be able to throw serialized proofs at, and ask it to verify (quickly!) if the proof and the corresponding key image actually validate against the curve tree. If so, the user can credit whoever provided this proof, with some kind of token, service access, whatever, and also the code keep track of what key images have already been used in a flat file persistent storage (see config option `keyimage_filename_suffix`). Here "quickly" should be in the 50-100ms range, for even up to millions of pubkeys. The RPC server takes a few seconds to start (loading precomputation tables and constructing the Curve Tree), and then serves on port as specified with `-p` at host specified with `-H` (default 127.0.0.1:23333).
 
 "request":
 
@@ -100,7 +100,7 @@ As probably obvious, the idea here is that we run a service (somewhere) for a cl
 ./autct -M request --keyset autct-830000-500000-0-2-1024.aks -P proof.txt
 ```
 
-This client connects to the above server and calls the `verify()` function with a binary string taken directly from the file specified with `-P` (`./proof.txt` by default), and should return with a line starting "Resource received: ..". If something is wrong, for example the key image, you will see an error message describing the condition.
+This client connects to the above server and calls the `verify()` function with a binary string taken directly from the file specified with `-P` (`./proof.txt` by default), and should return with the success or failure of verification status in the field `accepted`. If something is wrong, for example the key image is reused, you will see an error message describing the condition.
 
 In the directory `testdata` there are example pubkey files containing approximately 50K and 100K pubkeys (approx) taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. Note that these are *not* utxo set dumps, but dumps of keys that were present in that range of blocks. For this reason, the above naming convention (autct-N-M-a-b-c.aks) is not used. For these pubkey sets, the private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `068a2b638740814678a2274f537084c0d1ef3ec46a6466b3ca0c2550ac0ebc1f80` (with the default test labels).
 
