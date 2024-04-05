@@ -66,13 +66,14 @@ pub mod rpc {
     // should be able to decide the business logic of that based on the
     // context label given in the Request object.
     pub struct RPCProofVerifier<const L: usize>{
-        pub pubkey_filepath: String,
+        pub keyset_file_locs: Vec<String>,
+        pub context_labels: Vec<String>,
         pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
-        pub curve_tree: CurveTree<L, SecpConfig, SecqConfig>,
+        pub curve_trees: Vec<CurveTree<L, SecpConfig, SecqConfig>>,
         pub G: Affine<SecpConfig>,
         pub H: Affine<SecpConfig>,
-        pub J: Affine<SecpConfig>,
-        pub ks: Arc<Mutex<keyimagestore::KeyImageStore<Affine<SecpConfig>>>>,
+        pub Js: Vec<Affine<SecpConfig>>,
+        pub ks: Vec<Arc<Mutex<keyimagestore::KeyImageStore<Affine<SecpConfig>>>>>,
     }
 
     impl<const L: usize> RPCProofVerifier<{L}> {
@@ -97,7 +98,7 @@ pub mod rpc {
             let verif_request = args;
 
             let mut resp: RPCProofVerifyResponse = RPCProofVerifyResponse{
-                keyset: self.pubkey_filepath.clone(),
+                keyset: verif_request.keyset.clone(),
                 // note that this must be set by the *caller*:
                 user_label: verif_request.user_label.clone(),
                 application_label: String::from_utf8(APP_DOMAIN_LABEL.to_vec()).unwrap(),
@@ -107,21 +108,19 @@ pub mod rpc {
                 key_image: None,
             };
 
-            // TODO:
-            // For now, we just check that the pubkey file requested
-            // by the client corresponds to the keyset chosen by this process
-            // on startup.
-            // In future we should have the server pre-load a whole set of
-            // different keysets and curve trees and, more practically, create a client
-            // call that loads a specific keyset and curve tree for future
-            // verification calls.
-            // Also we want to be able to return sensible errors like
-            // "that pubkey set's curve tree does not exist/is not yet loaded".
-            if !(verif_request.keyset == self.pubkey_filepath) {
+            if !(self.context_labels.contains(&verif_request.context_label)) {
                 resp.accepted = -4;
                 return Ok(resp);
             }
-
+            // get the appropriate J value, and Curve Tree,
+            // by finding the index of the keyset, since
+            // we set the contexts in the same order as the keysets
+            // (and therefore Trees):
+            // (TODO can fold in above existence check to this call;
+            // but for now, this is guaranteed to succeed because of
+            // that check.)
+            let idx = self.context_labels.iter().position(
+                |x| x == &verif_request.context_label).unwrap();
             let mut cursor = Cursor::new(verif_request.proof);
             // deserialize the components of the PedDLEQ proof first and verify it:
             let D = Affine::<SecpConfig>::deserialize_compressed(
@@ -138,7 +137,7 @@ pub mod rpc {
                 &E,
                 &self.G,
                 &self.H,
-                &self.J,
+                &self.Js[idx],
                 verif_request.context_label.as_bytes(),
                 verif_request.user_label.as_bytes()
             );
@@ -153,7 +152,7 @@ pub mod rpc {
                         return Ok(resp);
                     }
             // check early if the now-verified key image (E) is a reuse-attempt:
-            if self.ks.lock().unwrap().is_key_in_store(E) {
+            if self.ks[idx].lock().unwrap().is_key_in_store(E) {
                 println!("Reuse of key image disallowed: ");
                 print_affine_compressed(E, "Key image value");
                 resp.accepted = -3;
@@ -161,7 +160,7 @@ pub mod rpc {
                 return Ok(resp);
             }
             // if it isn't, then it counts as used now:
-            self.ks.lock().unwrap().add_key(E).expect("Failed to add keyimage to store.");
+            self.ks[idx].lock().unwrap().add_key(E).expect("Failed to add keyimage to store.");
             // Next, we deserialize and validate the curve tree proof.
             // TODO replace these `expect()` calls; we need to return
             // an 'invalid proof format' error if they send us junk, not crash!
@@ -180,7 +179,9 @@ pub mod rpc {
                     &mut cursor).expect("Failed to deserialize root");
             let timer1 = Instant::now();
             let claimed_D = verify_curve_tree_proof(
-                path.clone(), &self.sr_params, &self.curve_tree, p0proof, p1proof, prover_root);
+                path.clone(), &self.sr_params, 
+                &self.curve_trees[idx],
+                p0proof, p1proof, prover_root);
             let claimed_D_result = match claimed_D {
                 Ok(x) => x,
                 Err(_x) => {

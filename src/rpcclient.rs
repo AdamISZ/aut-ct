@@ -9,15 +9,23 @@ use std::fs;
 
 pub async fn do_request(autctcfg: AutctConfig) -> Result<RPCProofVerifyResponse, Box<dyn Error>>{
     let rpc_port = autctcfg.rpc_port;
-    let host: &str= &autctcfg.rpc_host.unwrap();
+    let host: &str= &autctcfg.rpc_host.clone().unwrap();
     let port_str: &str = &rpc_port.unwrap().to_string();
     let addr: String = format!("{}:{}", host, port_str);
-    let proof_file_str = autctcfg.proof_file_str.unwrap();
+    let proof_file_str = autctcfg.proof_file_str.clone().unwrap();
     let buf = fs::read(proof_file_str).unwrap();
+    // request must specify *only one* context label, keyset:
+    let (mut cls, mut kss) = autctcfg.clone()
+    .get_context_labels_and_keysets().unwrap();
+    if kss.len() != 1 || cls.len() != 1 {
+        return Err("You may only specify one context_label:keyset in the request".into())
+    }
+    let keyset = kss.pop().unwrap();
+    let context_label = cls.pop().unwrap();
     let req: RPCProofVerifyRequest = RPCProofVerifyRequest {
-        keyset: autctcfg.keyset.unwrap(),
+        keyset,
         user_label: autctcfg.user_string.unwrap(),
-        context_label: autctcfg.context_label.unwrap(),
+        context_label,
         application_label: String::from_utf8(APP_DOMAIN_LABEL.to_vec()).unwrap(),
         proof: buf,
     };

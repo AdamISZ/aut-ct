@@ -51,6 +51,13 @@ impl<C: AffineRepr> KeyImageStore<C> {
         ks
     }
 
+    pub fn set_full_file_loc(&mut self, file_suffix: String) {
+        let str1 = &mut self.name.clone();
+        str1.push_str(&mut self.context_label.clone());
+        str1.push_str(&file_suffix);
+        self.full_file_loc = Some(PathBuf::from(str1.to_owned() + &String::from_utf8(KEYIMAGE_FILE_EXTENSION.to_vec()).unwrap()));
+    }
+
     pub fn is_key_in_store
     (&self, key_to_check: C) -> bool {
         match self.keys.iter().position(|&x| x  == key_to_check) {
@@ -151,9 +158,6 @@ impl<C: AffineRepr> CanonicalDeserialize for KeyImageStore<C> {
         Ok(Self {
             name: String::from_utf8(APP_DOMAIN_LABEL.to_vec()).unwrap(),
             context_label: String::from_utf8(bufcl).unwrap(),
-            // note that the deserialize method is making an object in-mem
-            // from persistence, so it doesn't (sometimes)
-            // care about filepaths:
             file_suffix: None,
             basepoint: Some(basepoint),
             keylen: usize::from_be_bytes(buf2),
@@ -187,16 +191,15 @@ impl fmt::Debug for KeyImageStoreExistsError {
 pub fn create_new_store<
     F: PrimeField,
     P0: SWCurveConfig<BaseField = F> + Copy,>
-    (autctcfg: AutctConfig) -> Result<KeyImageStore<Affine<P0>>, KeyImageStoreExistsError> {
+    (autctcfg: AutctConfig, context_label: &String) -> Result<KeyImageStore<Affine<P0>>, KeyImageStoreExistsError> {
     let name = APP_DOMAIN_LABEL;
     // get the J value from the config
-    println!("Using cofig: {:?}", autctcfg.context_label.clone().unwrap());
-    let J = get_generators::<F, P0>(&autctcfg.context_label.clone().unwrap().into_bytes());
+    let J = get_generators::<F, P0>(context_label.clone().as_bytes());
     // is there a less ugly way to go from &[u8] to String?
     let mut ks = KeyImageStore::<Affine<P0>>::new(
         Some(autctcfg.keyimage_filename_suffix.unwrap()),
         String::from_utf8(name.to_vec()).unwrap(),
-        autctcfg.context_label.unwrap(),
+        context_label.clone(),
          Some(J));
     println!("Got ffl: {:?}", &ks.full_file_loc.clone().unwrap());
     if Path::exists(&ks.full_file_loc.clone().unwrap()) {
@@ -233,9 +236,12 @@ mod tests {
     #[test]
     fn run_test_cases() {
         type F = <ark_secp256k1::Affine as AffineRepr>::BaseField;
-        let mut cfg = AutctConfig::default();
-        cfg.context_label = Some("keyimagestore-tests-001".to_string());
-        let mut ks = create_new_store::<F, SecpConfig>(cfg).unwrap();
+        let cfg = AutctConfig::default();
+        // note that the specification of a key store requires an explicit
+        // context label, because the config can contain a list of multiple
+        // context labels:
+        let mut ks = create_new_store::<F, SecpConfig>(cfg,
+             &"keyimagestore-tests-001".to_string()).unwrap();
         let mut rng = rand::thread_rng();
         let mut x: Vec<Affine<SecpConfig>> = Vec::with_capacity(100);
         for _ in 1..101 {

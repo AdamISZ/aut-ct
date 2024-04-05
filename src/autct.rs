@@ -3,6 +3,7 @@
 extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
+use base64::prelude::*;
 
 use autct::utils::*;
 use autct::config::AutctConfig;
@@ -197,14 +198,21 @@ async fn run_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
 fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     // read privkey from file
-    let privkey_file_str = autctcfg.privkey_file_str.unwrap();
+    let privkey_file_str = autctcfg.privkey_file_str.clone().unwrap();
     let privhex:String = read_file_string(&privkey_file_str)
     .expect("Failed to read the private key from the file");
+    // TODO: handle an error in privkey string format gracefully here:
     let mut x = decode_hex_le_to_F::<F>(&privhex);
     let G = SecpConfig::GENERATOR;
     let mut P = G.mul(x).into_affine();
     print_affine_compressed(P, "our pubkey");
-    let filepath = autctcfg.keyset.unwrap();
+    let (mut cls, mut kss) = autctcfg.clone()
+    .get_context_labels_and_keysets().unwrap();
+    if kss.len() != 1 || cls.len() != 1 {
+        return Err("You may only specify one context_label:keyset in the proof request".into())
+    }
+    let keyset = kss.pop().unwrap();
+    let context_label = cls.pop().unwrap();
     let (p0proof,
         p1proof,
         path,
@@ -218,7 +226,7 @@ fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
     SecqConfig>(
             autctcfg.depth.unwrap().try_into().unwrap(),
             autctcfg.generators_length_log_2.unwrap().try_into().unwrap(),
-            &filepath, P);
+            &keyset, P);
     // if we could only find our pubkey in the list by flipping
     // the sign of our private key (this is because the BIP340 compression
     // logic is different from that in ark-ec; a TODO is to remove this
@@ -230,7 +238,7 @@ fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
     print_affine_compressed(P, "P after flipping");
     // next steps create the Pedersen DLEQ proof for this key:
     //
-    let J = get_generators::<SecpBase, SecpConfig>(autctcfg.context_label.as_ref().unwrap().as_bytes());
+    let J = get_generators::<SecpBase, SecpConfig>(context_label.as_bytes());
     print_affine_compressed(J, "J");
     // blinding factor for Pedersen
     // the Pedersen commitment D is xG + rH
@@ -250,7 +258,7 @@ fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
             &J,
             None,
             None,
-            autctcfg.context_label.as_ref().unwrap().as_bytes(),
+            context_label.as_bytes(),
             autctcfg.user_string.as_ref().unwrap().as_bytes()
     );
     let mut buf = Vec::with_capacity(proof.serialized_size(Compress::Yes));
@@ -265,7 +273,7 @@ fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
                 &G,
                 &H,
                 &J,
-                autctcfg.context_label.unwrap().as_bytes(),
+                context_label.as_bytes(),
                 autctcfg.user_string.unwrap().as_bytes()
             )
             .is_ok());
@@ -285,8 +293,14 @@ fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
     p1proof.serialize_compressed(&mut buf2).unwrap();
     path.serialize_compressed(&mut buf2).unwrap();
     root.serialize_compressed(&mut buf2).unwrap();
-    write_file_string("proof.txt", buf2);
-    println!("Proof generated successfully and written to proof.txt. Size was {}", total_size);
+    if autctcfg.base64_proof.unwrap() {
+        let encoded = BASE64_STANDARD.encode(buf2);
+        println!("Proof generated successfully:\n{}", encoded);
+        return Ok(());
+    }
+    write_file_string(&autctcfg.proof_file_str.clone().unwrap(), buf2);
+    println!("Proof generated successfully and written to {}. Size was {}",
+    &autctcfg.proof_file_str.unwrap(), total_size);
     print_affine_compressed(root, "root");
     Ok(())
 }

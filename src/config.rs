@@ -4,6 +4,21 @@ use std::error::Error;
 use std::path::PathBuf;
 use clap::{Parser, CommandFactory, Command};
 
+// This handles config items with syntax: "a:b, c:d,.."
+fn get_params_from_config_string(params: String) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
+    let pairs: Vec<String> = params.split(",").map(|s| s.to_string()).collect();
+    let mut kss: Vec<String> = vec![];
+    let mut cls: Vec<String> = vec![];
+    for p in pairs {
+        let mut kscl: Vec<String> = p.split(":").map(|s| s.to_string()).collect();
+        // TODO this is where we can throw errors based on invalid user input,
+        // so handle them:
+        kss.push(kscl.pop().unwrap());
+        cls.push(kscl.pop().unwrap());
+    };
+    Ok((cls, kss))
+}
+
 /*
 The customized approach here is designed to allow:
 command line arguments or options first,
@@ -32,16 +47,15 @@ pub struct AutctConfig {
     pub mode: Option<String>,
     #[arg(short('V'), long, required=false)]
     pub version: Option<u8>,
-    /// See docs/protocol_utxo.md for details on the meaning
-    /// encoded in this (file)name (though for testing you can use anything)
+    /// Enter a comma separated list, in this format:
+    /// context:keysetname,context2:keysetname2,..
+    /// Note: each context specifies the application context
+    /// over which scarcity is enforced, each should
+    /// be different. The keysetname specifies the file from
+    /// which the CurveTree will be defined
     #[arg(short('k'), long, required=true)]
     #[clap(verbatim_doc_comment)]
-    pub keyset: Option<String>,
-    /// This specifies the use-case "realm"
-    /// over which tokens cannot be reused.
-    #[arg(short('c'), long, required=false)]
-    #[clap(verbatim_doc_comment)]
-    pub context_label: Option<String>,
+    pub keysets: String,
     /// Intended as a BIP-340-hex encoding of a secp256k1 point,
     /// though anything is allowed:
     #[arg(short('u'), long, required=false)]
@@ -87,23 +101,32 @@ pub struct AutctConfig {
     #[arg(long, required=false)]
     #[clap(verbatim_doc_comment)]
     pub keyimage_filename_suffix: Option<String>,
+    /// Set this to true to output the proof as a base64
+    /// string on stdout.
+    #[arg(long, required=false)]
+    #[clap(verbatim_doc_comment)]
+    pub base64_proof: Option<bool>,
 }
 
 impl ::std::default::Default for AutctConfig {
-    fn default() -> Self { Self {
+    fn default() -> Self {
+    let user_string = Some(std::str::from_utf8(utils::USER_STRING).unwrap().to_string());
+    let context_label = std::str::from_utf8(utils::CONTEXT_LABEL).unwrap().to_string(); 
+         Self {
     mode: Some("prove".to_string()),
-    version: Some(0), keyset: Some("default".to_string()),
-    context_label: Some(std::str::from_utf8(utils::CONTEXT_LABEL).unwrap().to_string()),
-    user_string: Some(std::str::from_utf8(utils::USER_STRING).unwrap().to_string()),
+    version: Some(0),
+    keysets: context_label + ":default",
+    user_string,
     depth: Some(2),
     branching_factor: Some(256), // currently not used, TODO
     generators_length_log_2: Some(11),
     rpc_host: Some("127.0.0.1".to_string()),
     rpc_port: Some(23333),
     verbose: Some(true),
-    proof_file_str: None,
+    proof_file_str: Some("default-proof-file".to_string()),
     privkey_file_str: Some("privkey".to_string()),
     keyimage_filename_suffix: Some("keyimages".to_string()),
+    base64_proof: Some(false),
  } }
 }
 
@@ -126,8 +149,7 @@ impl AutctConfig {
         // derp:
         self.mode = self.mode.or(config_file.mode);
         self.version = self.version.or(config_file.version);
-        self.keyset = self.keyset.or(config_file.keyset);
-        self.context_label = self.context_label.or(config_file.context_label);
+        //self.keysets = self.keysets.or(config_file.keysets);
         self.user_string = self.user_string.or(config_file.user_string);
         self.depth = self.depth.or(config_file.depth);
         self.branching_factor = self.branching_factor.or(config_file.branching_factor);
@@ -137,7 +159,7 @@ impl AutctConfig {
         self.proof_file_str = self.proof_file_str.or(config_file.proof_file_str);
         self.privkey_file_str = self.privkey_file_str.or(config_file.privkey_file_str);
         self.keyimage_filename_suffix = self.keyimage_filename_suffix.or(config_file.keyimage_filename_suffix);
-
+        self.base64_proof = self.base64_proof.or(config_file.base64_proof);
         Ok(self)
     }
 
@@ -160,6 +182,10 @@ impl AutctConfig {
         }
 
         Ok(self)
+    }
+
+    pub fn get_context_labels_and_keysets(self) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
+        get_params_from_config_string(self.keysets)
     }
 
 }
