@@ -41,7 +41,8 @@ https://stackoverflow.com/a/75981247
 #[command(about, long_about = None, next_line_help = true)]
 #[clap(version, about="Anonymous Usage Tokens from Curve Trees")]
 pub struct AutctConfig {
-    /// The argument `mode` is one of "prove", "serve", "request"
+    /// `mode` is one of: "newkey", "prove",
+    /// "serve", and "request"
     #[arg(short('M'), long, required=true)]
     #[clap(verbatim_doc_comment)]
     pub mode: Option<String>,
@@ -106,6 +107,11 @@ pub struct AutctConfig {
     #[arg(long, required=false)]
     #[clap(verbatim_doc_comment)]
     pub base64_proof: Option<bool>,
+    /// Set this to one of 'mainnet', 'signet',
+    /// 'regtest'
+    #[arg(short('n'), long, required=false)]
+    #[clap(verbatim_doc_comment)]
+    pub bc_network: Option<String>,
 }
 
 impl ::std::default::Default for AutctConfig {
@@ -113,7 +119,7 @@ impl ::std::default::Default for AutctConfig {
     let user_string = Some(std::str::from_utf8(utils::USER_STRING).unwrap().to_string());
     let context_label = std::str::from_utf8(utils::CONTEXT_LABEL).unwrap().to_string(); 
          Self {
-    mode: Some("prove".to_string()),
+    mode: Some("newkey".to_string()),
     version: Some(0),
     keysets: context_label + ":default",
     user_string,
@@ -127,6 +133,7 @@ impl ::std::default::Default for AutctConfig {
     privkey_file_str: Some("privkey".to_string()),
     keyimage_filename_suffix: Some("keyimages".to_string()),
     base64_proof: Some(false),
+    bc_network: Some("mainnet".to_string()),
  } }
 }
 
@@ -160,6 +167,7 @@ impl AutctConfig {
         self.privkey_file_str = self.privkey_file_str.or(config_file.privkey_file_str);
         self.keyimage_filename_suffix = self.keyimage_filename_suffix.or(config_file.keyimage_filename_suffix);
         self.base64_proof = self.base64_proof.or(config_file.base64_proof);
+        self.bc_network = self.bc_network.or(config_file.bc_network);
         Ok(self)
     }
 

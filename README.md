@@ -71,10 +71,9 @@ sudo apt install build-essential
 
 Build the project with `cargo build --release` (without release flag, the debug version is very slow), then the executable is at `target/release/autct`.
 
-Start with `target/release/autct --help` for the summary of the syntax. Note that two "optional" flags are required (TODO: they should be arguments), namely `-M` for the mode and `-k` for the keyset.
+Start with `target/release/autct --help` for the summary of the syntax. Note that two flags are required (TODO: they should be arguments), namely `-M` for the mode and `-k` for the keyset.
 
-Taking each of the three `mode`s in turn:
-
+Taking each of the four `mode`s in turn:
 
 "prove":
 
@@ -107,6 +106,16 @@ Additionally, as noted above, a server can serve the verification function for m
 This client connects to the above server and calls the `verify()` function with a binary string taken directly from the file specified with `-P`, and should return with the success or failure of verification status in the field `accepted`. If something is wrong, for example the key image is reused, you will see an error message describing the condition.
 
 In the directory `testdata` there are example pubkey files containing approximately 50K and 100K pubkeys (approx) taken from all taproot outputs on signet between blocks 85000 and 155000, which you can use to test if you like. Note that these are *not* utxo set dumps, but dumps of keys that were present in that range of blocks. For this reason, the above naming convention (autct-N-M-a-b-c.aks) is not used. For these pubkey sets, the private key `373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `068a2b638740814678a2274f537084c0d1ef3ec46a6466b3ca0c2550ac0ebc1f80` (with the default test labels).
+
+Finally, an auxiliary tool:
+
+"newkey":
+
+```
+./autct -M newkey --keyset:none -n mainnet
+```
+
+If you need a new taproot address and its corresponding private key, this convenience method allows that. The private key is output in WIF format and can be imported into other taproot-supporting wallets; the address is the 'standard' p2tr type. The network (`-n`) should be one of "mainnet", "signet" or "regtest".
 
 ## Configuring
 

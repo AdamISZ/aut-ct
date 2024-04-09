@@ -10,6 +10,9 @@ use autct::config::AutctConfig;
 use autct::peddleq::PedDleqProof;
 mod rpcclient;
 mod rpcserver;
+use bitcoin::{Address, PrivateKey, XOnlyPublicKey};
+use bitcoin::key::Secp256k1;
+
 use bulletproofs::r1cs::R1CSProof;
 use bulletproofs::r1cs::Prover;
 use alloc::vec::Vec;
@@ -169,12 +172,40 @@ async fn main() -> Result<(), Box<dyn Error>>{
                         _ => {panic!("Invalid branching factor")},
                         }
                     },
+        "newkeys" => {return run_create_keys(autctcfg).await},
         _ => {println!("Invalid mode, must be 'prove', 'serve' or 'request'")},
 
     }
     Ok(())
 }
 
+
+async fn run_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
+
+    let nw = match autctcfg.bc_network.unwrap().as_str() {
+        "mainnet" => bitcoin::Network::Bitcoin,
+        "signet" => bitcoin::Network::Signet,
+        "regtest" => bitcoin::Network::Regtest,
+       _ => panic!("Invalid bitcoin network string in config."),
+    };
+
+    // This uses the `rand-std` feature in the rust-bitcoin crate to generate
+    // the random number via libsecp256k1 in the recommended secure way:
+    let privkey = PrivateKey::generate(nw);
+    let secp = Secp256k1::new();
+    // this is the standard way to generate plain-vanilla taproot addresses:
+    // it is not "raw" (rawtr in descriptors) but it applies a merkle root of
+    // null as the tweak to the internal pubkey. This is what e.g. Sparrow is
+    // looking for as "p2tr" type.
+    let addr = Address::p2tr(&secp,
+         XOnlyPublicKey::from(privkey.public_key(&secp).inner),
+          None, privkey.network);
+    println!("This is the address to pay into: {}", addr);
+    // print this to the file configured in --privkey file, but error/warn if already exists
+    println!("This is the private key in WIF format: {}", privkey);
+    println!("The WIF string above can be imported into e.g. Sparrow, Core to sweep or access the funds in it.");
+    Ok(())
+}
 async fn run_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
     let res = rpcclient::do_request(autctcfg).await;
     match res {

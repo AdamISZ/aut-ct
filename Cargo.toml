@@ -34,7 +34,7 @@ clap = { version = "4", features = [
 ] }
 toml = "0.7"
 blocks_iterator = {git = "https://github.com/RCasatta/blocks_iterator", rev = "a3eb1b2b9da52f8d9a3e24e8950aa2581696616e" }
-bitcoin = { version = "0.30", features = ["serde"] }
+bitcoin = { version = "0.31.1", features = ["serde", "rand-std"] }
 structopt = "0.3.21"
 env_logger = "0.10"
 itertools = "0.12"
