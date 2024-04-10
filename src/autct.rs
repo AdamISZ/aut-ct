@@ -228,12 +228,25 @@ async fn run_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
 }
 fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
-    // read privkey from file
+    // read privkey from file; we prioritize WIF format for compatibility
+    // with external wallets, but if that fails, we attempt to read it
+    // as raw hex:
     let privkey_file_str = autctcfg.privkey_file_str.clone().unwrap();
-    let privhex:String = read_file_string(&privkey_file_str)
-    .expect("Failed to read the private key from the file");
-    // TODO: handle an error in privkey string format gracefully here:
-    let mut x = decode_hex_le_to_F::<F>(&privhex);
+    let privwif:String = read_file_string(&privkey_file_str).expect("Failed to read the private key from the file");
+    let privkeyres1 = PrivateKey::from_wif(privwif.as_str());
+    let privhex: String;
+    if !privkeyres1.is_err(){
+        privhex = hex::encode(privkeyres1.unwrap().to_bytes());
+    }
+    else {
+        println!("WIF decode of private key failed; assuming it is raw hex.");
+        privhex = privwif;
+    }
+    let xres = decode_hex_le_to_F::<F>(&privhex);
+    let mut x = match xres {
+        Ok(y) => y,
+        Err(_e) => {panic!("Failed to decode private key.");}
+    };
     let G = SecpConfig::GENERATOR;
     let mut P = G.mul(x).into_affine();
     print_affine_compressed(P, "our pubkey");

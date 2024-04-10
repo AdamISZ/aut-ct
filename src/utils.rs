@@ -30,10 +30,13 @@ pub const USER_STRING: &[u8] = b"name-goes-here";
 // Given a hex string of big-endian encoding,
 // first change to little endian bytes and then deserialize
 // it as a field element
-pub fn decode_hex_le_to_F<F: PrimeField>(s: &String) -> F{
-    let mut x = hex::decode(s).expect("hex decode failed");
-    x.reverse();
-    F::deserialize_compressed(&x[..]).unwrap()
+pub fn decode_hex_le_to_F<F: PrimeField>(s: &String) -> Result<F, Box<dyn std::error::Error>>{
+    let x = hex::decode(s);
+    if x.is_err(){
+        return Err("Invalid hex encoding".into());
+    }
+    x.clone().unwrap().reverse();
+    Ok(F::deserialize_compressed(&x.unwrap()[..]).unwrap())
 }
 
 pub fn print_field_elem_hex<F: PrimeField>(x: &F, name: &str) {
@@ -141,9 +144,6 @@ pub fn get_leaf_commitments<F: PrimeField,
                 b.push(sbin.clone())},
             Err(e) => {println!("Error {}", e)}
         }
-        //let mut sbin = hex::decode(s).expect("hex decode failed");
-        //sbin.reverse();
-        //b.push(sbin.clone());
     }
     let mut leaf_commitments = Vec::new();
     for a in b.into_iter(){
@@ -154,9 +154,6 @@ pub fn get_leaf_commitments<F: PrimeField,
             None => {println!("Invalid pubkey detected, ignoring.");},
         };
     }
-    //let leaf_commitments: Vec<Affine<P0>> = b
-    //        .into_iter()
-    //        .map(|x| <Affine<P0> as AffineRepr>::from_random_bytes(&x[..]).unwrap()).collect();
     leaf_commitments
 }
 

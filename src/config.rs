@@ -124,7 +124,7 @@ impl ::std::default::Default for AutctConfig {
     keysets: context_label + ":default",
     user_string,
     depth: Some(2),
-    branching_factor: Some(256), // currently not used, TODO
+    branching_factor: Some(256),
     generators_length_log_2: Some(11),
     rpc_host: Some("127.0.0.1".to_string()),
     rpc_port: Some(23333),

@@ -144,14 +144,14 @@ echo 373d30b06bb88d276828ac60fa4f7bc6a2d035615a1fb17342638ad2203cafcf > privkey
 Then compute the proof:
 
 ```
-target/release/autct -M prove -k default-app-context-label:testdata/signet-pubkeys-85000-155000.txt
+target/release/autct -M prove -k testctxt:testdata/signet-pubkeys-85000-155000.txt
 ```
 
 In a different terminal, but still in repository root, start the server-verifier:
 
 ```
 target/release/autct -M serve -k \
-default-app-context-label:testdata/signet-pubkeys-85000-155000.txt
+testctxt:testdata/signet-pubkeys-85000-155000.txt
 ```
 
 Go back to the original terminal, and make a request from the rpc client,
@@ -159,7 +159,7 @@ to verify the proof and deliver a resource:
 
 ```
 target/release/autct -M request -P default-proof-file -k \
-default-app-context-label:testdata/signet-pubkeys-85000-155000.txt
+testctxt:testdata/signet-pubkeys-85000-155000.txt
 ```
 
 Ouput log in server-verifier's terminal should look similar to this:
@@ -170,7 +170,7 @@ Elapsed time for verifier gadget call: 2.15ms
 Elapsed time for verifier calls: 46.28ms
 Root is odd? false
 Elapsed time for verify_curve_tree_proof: 49.00ms
-Verifying curve tree passed and it matched the key image. Here is the key image: "068a2b638740814678a2274f537084c0d1ef3ec46a6466b3ca0c2550ac0ebc1f80"
+Verifying curve tree passed and it matched the key image. Here is the key image: "ff5aa374a1ce1fda6c34439970d9fe94c5e22890b52ced39af818aba892c140680"
 ```
 
 Output of rpcclient should look like:
