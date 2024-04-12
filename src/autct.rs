@@ -11,7 +11,7 @@ use autct::peddleq::PedDleqProof;
 mod rpcclient;
 mod rpcserver;
 use bitcoin::{Address, PrivateKey, XOnlyPublicKey};
-use bitcoin::key::Secp256k1;
+use bitcoin::key::{Secp256k1, TapTweak, UntweakedKeypair};
 
 use bulletproofs::r1cs::R1CSProof;
 use bulletproofs::r1cs::Prover;
@@ -228,25 +228,52 @@ async fn run_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
 }
 fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
+    let nw = match autctcfg.bc_network.clone().unwrap().as_str() {
+        "mainnet" => bitcoin::Network::Bitcoin,
+        "signet" => bitcoin::Network::Signet,
+        "regtest" => bitcoin::Network::Regtest,
+       _ => panic!("Invalid bitcoin network string in config."),
+    };
+    let secp = Secp256k1::new(); // is the context global? need to check
     // read privkey from file; we prioritize WIF format for compatibility
     // with external wallets, but if that fails, we attempt to read it
     // as raw hex:
     let privkey_file_str = autctcfg.privkey_file_str.clone().unwrap();
-    let privwif:String = read_file_string(&privkey_file_str).expect("Failed to read the private key from the file");
+    let privwif:String = read_file_string(&privkey_file_str)
+    .expect("Failed to read the private key from the file");
+
+    // Because sparrow (and, kinda, Core) expect usage of non-raw p2tr,
+    // it means we're forced to use the default tweaking algo here, even
+    // though it majorly screws up the flow (as we want to use ark's Affine<>
+    // objects for the curve points here).
+    // 1. First convert the hex equivalent of the WIF into a byte slice (
+    // note that this is a big endian encoding still).
+    // 2. Then call PrivateKey.from_slice to deserialize into a PrivateKey.
+    // 3. use the privkey.public_key(&secp).inner.tap_tweak function
+    //    to get a tweaked pubkey.
+    // 3. Then serialize that as a string, deserialize it back out to Affine<Config>
+
     let privkeyres1 = PrivateKey::from_wif(privwif.as_str());
-    let privhex: String;
-    if !privkeyres1.is_err(){
-        privhex = hex::encode(privkeyres1.unwrap().to_bytes());
+    let privkey: PrivateKey;
+    if privkeyres1.is_err(){
+        let privkeyres2 = PrivateKey::from_slice(
+            &hex::decode(privwif).unwrap(),
+         nw);
+        if privkeyres2.is_err(){
+            panic!("Failed to read the private key as either WIF or hex format!");
+        }
+        privkey = privkeyres2.unwrap();
     }
     else {
-        println!("WIF decode of private key failed; assuming it is raw hex.");
-        privhex = privwif;
+        privkey = privkeyres1.unwrap();
     }
-    let xres = decode_hex_le_to_F::<F>(&privhex);
-    let mut x = match xres {
-        Ok(y) => y,
-        Err(_e) => {panic!("Failed to decode private key.");}
-    };
+    let untweaked_key_pair: UntweakedKeypair = UntweakedKeypair::from_secret_key(
+        &secp, &privkey.inner);
+    let tweaked_key_pair = untweaked_key_pair.tap_tweak(&secp, None);
+    let privkey_bytes = tweaked_key_pair.to_inner().secret_bytes();
+    let privhex = hex::encode(&privkey_bytes);
+
+    let mut x = decode_hex_le_to_F::<F>(&privhex);
     let G = SecpConfig::GENERATOR;
     let mut P = G.mul(x).into_affine();
     print_affine_compressed(P, "our pubkey");

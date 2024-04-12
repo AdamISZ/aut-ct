@@ -30,13 +30,10 @@ pub const USER_STRING: &[u8] = b"name-goes-here";
 // Given a hex string of big-endian encoding,
 // first change to little endian bytes and then deserialize
 // it as a field element
-pub fn decode_hex_le_to_F<F: PrimeField>(s: &String) -> Result<F, Box<dyn std::error::Error>>{
-    let x = hex::decode(s);
-    if x.is_err(){
-        return Err("Invalid hex encoding".into());
-    }
-    x.clone().unwrap().reverse();
-    Ok(F::deserialize_compressed(&x.unwrap()[..]).unwrap())
+pub fn decode_hex_le_to_F<F: PrimeField>(s: &String) -> F{
+    let mut x = hex::decode(s).expect("Invalid hex encoding");
+    x.reverse();
+    F::deserialize_compressed(&x[..]).unwrap()
 }
 
 pub fn print_field_elem_hex<F: PrimeField>(x: &F, name: &str) {
