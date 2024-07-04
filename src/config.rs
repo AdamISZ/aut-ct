@@ -3,7 +3,7 @@ use crate::utils;
 use std::error::Error;
 use std::path::PathBuf;
 use clap::{Parser, CommandFactory, Command};
-
+use pyo3::pyclass;
 // This handles config items with syntax: "a:b, c:d,.."
 fn get_params_from_config_string(params: String) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
     let pairs: Vec<String> = params.split(",").map(|s| s.to_string()).collect();
@@ -37,9 +37,14 @@ The recipe for this is taken from:
 https://stackoverflow.com/a/75981247
 */
 
+// note this struct has to be a pyclass
+// if we want run_prove to be callable from
+// a python binding, as it is the (only) argument
+// to that call:
 #[derive(Parser, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[command(about, long_about = None, next_line_help = true)]
 #[clap(version, about="Anonymous Usage Tokens from Curve Trees")]
+#[pyclass]
 pub struct AutctConfig {
     /// `mode` is one of: "newkey", "prove",
     /// "serve", and "request"

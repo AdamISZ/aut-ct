@@ -7,7 +7,6 @@ use tokio::{task, net::TcpListener};
 use std::fs;
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
-use std::error::Error;
 use toy_rpc::Server;
 use std::iter::zip;
 
@@ -18,8 +17,9 @@ use relations::curve_tree::{SelRerandParameters, CurveTree};
 use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
 use ark_secq256k1::Config as SecqConfig;
 use ark_ec::short_weierstrass::{Affine, SWCurveConfig};
+use utils::CustomError;
 
-pub async fn do_serve<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), CustomError>{
     let (context_labels, keyset_file_locs) = autctcfg
     .clone().get_context_labels_and_keysets().unwrap();
     let rpc_port = autctcfg.rpc_port.unwrap();
@@ -31,12 +31,12 @@ pub async fn do_serve<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<d
     let sr_params = SelRerandParameters::<SecpConfig, SecqConfig>::new(
                 generators_length,
                 generators_length, &mut rng);
-    let mut curve_trees: Vec<CurveTree<L, SecpConfig, SecqConfig>> = vec![];
+    let mut curve_trees: Vec<CurveTree<SecpConfig, SecqConfig>> = vec![];
     let mut Js: Vec<Affine<SecpConfig>> = vec![];
     let mut kss: Vec<Arc<Mutex<KeyImageStore<Affine<SecpConfig>>>>> = vec![];
     for (fl, cl) in zip(keyset_file_locs.iter(), context_labels.iter()) {
         let (curve_tree2, _) = get_curve_tree::
-        <L, SecpBase, SecpConfig, SecqConfig>(
+        <SecpBase, SecpConfig, SecqConfig>(
         &fl,
         autctcfg.depth.unwrap().try_into().unwrap(), &sr_params);
         curve_trees.push(curve_tree2);

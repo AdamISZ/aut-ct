@@ -4,9 +4,10 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+pyo3 = "0.21.1"
 rand = { version = "0.8", default-features = false }
-bulletproofs = { git = "https://github.com/AdamISZ/curve-trees", rev = "08700f59427a36d8fb2b49a7e8bc7aaf6d27454e" }
-relations = { git = "https://github.com/AdamISZ/curve-trees", rev = "08700f59427a36d8fb2b49a7e8bc7aaf6d27454e" }
+bulletproofs = { git = "https://github.com/AdamISZ/curve-trees", rev = "87d35556dbee5d6751e3aaf867978ea84faa081f" }
+relations = { git = "https://github.com/AdamISZ/curve-trees", rev = "87d35556dbee5d6751e3aaf867978ea84faa081f" }
 ark-ff = { version = "0.4.0"}
 ark-ec = { version = "0.4.0"}
 ark-serialize = { version = "0.4.0" } 

@@ -65,18 +65,18 @@ pub mod rpc {
     // the callback code that ends up assiging resource strings to users,
     // should be able to decide the business logic of that based on the
     // context label given in the Request object.
-    pub struct RPCProofVerifier<const L: usize>{
+    pub struct RPCProofVerifier{
         pub keyset_file_locs: Vec<String>,
         pub context_labels: Vec<String>,
         pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
-        pub curve_trees: Vec<CurveTree<L, SecpConfig, SecqConfig>>,
+        pub curve_trees: Vec<CurveTree<SecpConfig, SecqConfig>>,
         pub G: Affine<SecpConfig>,
         pub H: Affine<SecpConfig>,
         pub Js: Vec<Affine<SecpConfig>>,
         pub ks: Vec<Arc<Mutex<keyimagestore::KeyImageStore<Affine<SecpConfig>>>>>,
     }
 
-    impl<const L: usize> RPCProofVerifier<{L}> {
+    impl RPCProofVerifier {
 
         // currently the only request in the API:
         // the two arguments are:
@@ -171,7 +171,7 @@ pub mod rpc {
             R1CSProof::<Affine<SecqConfig>>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).expect("Failed p1proof deserialize");
             let path = 
-            SelectAndRerandomizePath::<L, SecpConfig, SecqConfig>::deserialize_with_mode(
+            SelectAndRerandomizePath::<SecpConfig, SecqConfig>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).expect("failed path deserialize");
 
             // TODO this is part of the 'can we handle different root parity' problem:
@@ -218,7 +218,7 @@ pub mod rpc {
     // not (as far as I can tell) support const generics, and throw
     // compilation error if you try to use them on a struct with such
     // a const generic, so I expanded out the macros and re-added L by hand.
-    impl<const L: usize> RPCProofVerifier<{L}> {
+    impl RPCProofVerifier {
         pub fn verify_handler(
             self: std::sync::Arc<Self>,
             mut deserializer: Box<
@@ -242,14 +242,14 @@ pub mod rpc {
             })
         }
     }
-    impl<const L: usize> toy_rpc::util::RegisterService for RPCProofVerifier<{L}> {
+    impl toy_rpc::util::RegisterService for RPCProofVerifier {
         fn handlers() -> std::collections::HashMap<
             &'static str,
             toy_rpc::service::AsyncHandler<Self>,
         > {
             let mut map = std::collections::HashMap::<
                 &'static str,
-                toy_rpc::service::AsyncHandler<RPCProofVerifier<L>>,
+                toy_rpc::service::AsyncHandler<RPCProofVerifier>,
             >::new();
             map.insert("verify", RPCProofVerifier::verify_handler);
             map
