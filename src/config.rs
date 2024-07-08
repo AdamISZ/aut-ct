@@ -48,7 +48,7 @@ https://stackoverflow.com/a/75981247
 pub struct AutctConfig {
     /// `mode` is one of: "newkey", "prove",
     /// "serve", and "request"
-    #[arg(short('M'), long, required=true)]
+    #[arg(short('M'), long, required=false)]
     #[clap(verbatim_doc_comment)]
     pub mode: Option<String>,
     //#[arg(short('V'), long, required=false)]
@@ -59,9 +59,9 @@ pub struct AutctConfig {
     /// over which scarcity is enforced, each should
     /// be different. The keysetname specifies the file from
     /// which the CurveTree will be defined
-    #[arg(short('k'), long, required=true)]
+    #[arg(short('k'), long, required=false)]
     #[clap(verbatim_doc_comment)]
-    pub keysets: String,
+    pub keysets: Option<String>,
     /// Intended as a BIP-340-hex encoding of a secp256k1 point,
     /// though anything is allowed:
     #[arg(short('u'), long, required=false)]
@@ -126,7 +126,7 @@ impl ::std::default::Default for AutctConfig {
          Self {
     mode: Some("newkey".to_string()),
     //version: Some(0),
-    keysets: context_label + ":default",
+    keysets: Some(context_label + ":default"),
     user_string,
     depth: Some(2),
     branching_factor: Some(1024),
@@ -147,6 +147,7 @@ impl AutctConfig {
     pub fn build() -> Result<Self, Box<dyn Error>> {
         let app: Command = AutctConfig::command();
         let app_name: &str = app.get_name();
+        println!("App name bis: {}", app_name);
         let args: AutctConfig = AutctConfig::parse()
         .get_config_file(app_name)?
         .set_config_file(app_name)?
@@ -156,12 +157,13 @@ impl AutctConfig {
     /// Get configuration file.
     /// A new configuration file is created with default values if none exists.
     fn get_config_file(mut self, app_name: &str) -> Result<Self, Box<dyn Error>> {
-
+        println!("Running confy load using app name {}", app_name);
         let config_file: AutctConfig = confy::load(app_name, None)?;
+        println!("config file loaded ok");
         // derp:
         self.mode = self.mode.or(config_file.mode);
         //self.version = self.version.or(config_file.version);
-        //self.keysets = self.keysets.or(config_file.keysets);
+        self.keysets = self.keysets.or(config_file.keysets);
         self.user_string = self.user_string.or(config_file.user_string);
         self.depth = self.depth.or(config_file.depth);
         self.branching_factor = self.branching_factor.or(config_file.branching_factor);
@@ -198,7 +200,7 @@ impl AutctConfig {
     }
 
     pub fn get_context_labels_and_keysets(self) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
-        get_params_from_config_string(self.keysets)
+        get_params_from_config_string(self.keysets.unwrap())
     }
 
 }
