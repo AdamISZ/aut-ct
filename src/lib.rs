@@ -5,6 +5,9 @@ pub mod utils;
 pub mod autctverifier;
 pub mod config;
 pub mod keyimagestore;
+mod autct;
+mod rpcclient;
+mod rpcserver;
 
 extern crate rand;
 extern crate alloc;
@@ -27,6 +30,23 @@ use ark_secq256k1::Config as SecqConfig;
 
 use std::io::Cursor;
 use std::time::Instant;
+
+use pyo3::prelude::*;
+use crate::autct::run_prover;
+
+#[pyfunction]
+fn run_prover_wrap() -> Result<(), CustomError> {
+    let autctcfg = config::AutctConfig::build().unwrap();
+    run_prover(autctcfg)
+}
+/// A Python module implemented in Rust. The name of this function must match
+/// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
+/// import the module.
+#[pymodule]
+fn autctbind(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(run_prover_wrap, m)?)?;
+    Ok(())
+}
 
 pub mod rpc {
 

@@ -2,7 +2,7 @@
 
 use ark_serialize::{ CanonicalDeserialize, 
     Compress, Validate};
-use autct::utils::{get_curve_tree, APP_DOMAIN_LABEL};
+use crate::utils::{get_curve_tree, APP_DOMAIN_LABEL};
 use tokio::{task, net::TcpListener};
 use std::fs;
 use std::io::Cursor;
@@ -10,9 +10,9 @@ use std::sync::{Arc, Mutex};
 use toy_rpc::Server;
 use std::iter::zip;
 
-use autct::{rpc::RPCProofVerifier, utils};
-use autct::config::AutctConfig;
-use autct::keyimagestore::{KeyImageStore, create_new_store};
+use crate::{rpc::RPCProofVerifier, utils};
+use crate::config::AutctConfig;
+use crate::keyimagestore::{KeyImageStore, create_new_store};
 use relations::curve_tree::{SelRerandParameters, CurveTree};
 use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
 use ark_secq256k1::Config as SecqConfig;

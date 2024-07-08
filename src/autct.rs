@@ -5,11 +5,11 @@ extern crate alloc;
 extern crate ark_secp256k1;
 use base64::prelude::*;
 
-use autct::utils::*;
-use autct::config::AutctConfig;
-use autct::peddleq::PedDleqProof;
-mod rpcclient;
-mod rpcserver;
+use crate::utils::*;
+use crate::config::AutctConfig;
+use crate::peddleq::PedDleqProof;
+use crate::rpcclient;
+use crate::rpcserver;
 use bitcoin::{Address, PrivateKey, XOnlyPublicKey};
 use bitcoin::key::{Secp256k1, TapTweak, UntweakedKeypair};
 
@@ -215,7 +215,7 @@ async fn run_request(autctcfg: AutctConfig) -> Result<(), CustomError> {
 }
 
 #[pyfunction]
-fn run_prover(autctcfg: AutctConfig) -> Result<(), CustomError>{
+pub fn run_prover(autctcfg: AutctConfig) -> Result<(), CustomError>{
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     let nw = match autctcfg.bc_network.clone().unwrap().as_str() {
         "mainnet" => bitcoin::Network::Bitcoin,

@@ -51,8 +51,8 @@ pub struct AutctConfig {
     #[arg(short('M'), long, required=true)]
     #[clap(verbatim_doc_comment)]
     pub mode: Option<String>,
-    #[arg(short('V'), long, required=false)]
-    pub version: Option<u8>,
+    //#[arg(short('V'), long, required=false)]
+    //pub version: Option<u8>,
     /// Enter a comma separated list, in this format:
     /// context:keysetname,context2:keysetname2,..
     /// Note: each context specifies the application context
@@ -125,7 +125,7 @@ impl ::std::default::Default for AutctConfig {
     let context_label = std::str::from_utf8(utils::CONTEXT_LABEL).unwrap().to_string(); 
          Self {
     mode: Some("newkey".to_string()),
-    version: Some(0),
+    //version: Some(0),
     keysets: context_label + ":default",
     user_string,
     depth: Some(2),
@@ -160,7 +160,7 @@ impl AutctConfig {
         let config_file: AutctConfig = confy::load(app_name, None)?;
         // derp:
         self.mode = self.mode.or(config_file.mode);
-        self.version = self.version.or(config_file.version);
+        //self.version = self.version.or(config_file.version);
         //self.keysets = self.keysets.or(config_file.keysets);
         self.user_string = self.user_string.or(config_file.user_string);
         self.depth = self.depth.or(config_file.depth);
