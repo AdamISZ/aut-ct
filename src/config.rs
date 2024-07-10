@@ -41,7 +41,7 @@ https://stackoverflow.com/a/75981247
 #[command(about, long_about = None, next_line_help = true)]
 #[clap(version, about="Anonymous Usage Tokens from Curve Trees")]
 pub struct AutctConfig {
-    /// `mode` is one of: "newkey", "prove",
+    /// `mode` is one of: "newkeys", "prove",
     /// "serve", "convertkeys" or "request"
     #[arg(short('M'), long, required=true)]
     #[clap(verbatim_doc_comment)]

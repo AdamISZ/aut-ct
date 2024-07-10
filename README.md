@@ -73,9 +73,18 @@ Build the project with `cargo build --release` (without release flag, the debug 
 
 Start with `target/release/autct --help` for the summary of the syntax. Note that two flags are required (TODO: they should be arguments), namely `-M` for the mode and `-k` for the keyset.
 
-Taking each of the four `mode`s in turn:
+Taking each of the five `mode`s in turn:
 
-"prove":
+"prove" and "convertkeys":
+
+```
+target/release/autct -M convertkeys --keysets \
+my-context:testdata/autct-203015-500000-0-2-1024.aks \
+```
+
+This takes a given keyset file and converts it into a form that allows the prover to run faster. The converted keyset file will end in `.aks.p` and be in the same location as the original. The keyset file is explained more below.
+
+Once you have this `.aks.p` file, you can do the `prove` operation:
 
 ```
 target/release/autct -M prove --keysets \
@@ -83,11 +92,13 @@ my-context:testdata/autct-203015-500000-0-2-1024.aks \
 -i privkeyfile
 ```
 
-Note that the private key is read in as hex from the file specified with `-i`, which by default is a local directory file called `privkey`.
+Note that the private key is read in as WIF format from the file specified with `-i`, which by default is a local directory file called `privkey`.
 
 Note that the `keysets` (or `-k`) option takes a particular format: `contextlabel:filename`, and that this can (as we will see below) be a comma-separated list. The idea here is that usage tokens' scarcity depends on context; you can use the same utxo twice in *different* contexts (like, different applications) but only once in the same context.
 
-The file `autct-203015-500000-0-2-1024.aks`, or whatever else is specified (see [here](./docs/protocol-utxo.md) Appendix 1 for filename structure), should contain public keys in format: compressed, hex encoded, separated by whitespace, all on one line. The output is sent to the file specified by `-P`, which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file, in order to identify the correct index to use in the proof.
+The file `autct-203015-500000-0-2-1024.aks`, or whatever else is specified (see [here](./docs/protocol-utxo.md) Appendix 1 for filename structure), should contain public keys in format: compressed, hex encoded, separated by whitespace, all on one line. The `.aks.p` file after conversion is binary format and contains the "permissible point" corresponding to each pubkey (see the Curve Tree paper for details).
+
+The output of the proving algorithm is sent to the file specified by `-P`, which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file (the `.aks.p` file), in order to identify the correct index to use in the proof.
 
 "serve":
 
@@ -113,10 +124,10 @@ In the directory `testdata` there is an example pubkey file containing approxima
 
 Finally, an auxiliary tool:
 
-"newkey":
+"newkeys":
 
 ```
-./autct -M newkey --keysets none -n mainnet
+./autct -M newkeys --keysets none -n mainnet
 ```
 
 If you need a new taproot address and its corresponding private key, this convenience method allows that. The private key is output in WIF format and can be imported into other taproot-supporting wallets; the address is the 'standard' p2tr type. The network (`-n`) should be one of `mainnet`, `signet` or `regtest`.
@@ -146,6 +157,14 @@ echo cRczLRUHjDTEM92wagj3mMRvP69Jz3SEHQc8pFKiszFBPpJo8dVD > privkey
 (you could change the permissions of this file but this is only a test).
 
 The above private key corresponds to an existing signet utxo with more than 500k sats in it. Please don't spend it!
+
+First, convert the keyset given in the repository's `testdata` folder:
+
+```
+target/release/autct -M convertkeys --keysets my-context:testdata/autct-203015-500000-0-2-1024.aks
+```
+
+... this preparatory step need only be done once for any given keyset, but can take well over a minute for large keysets.
 
 Then compute the proof:
 
