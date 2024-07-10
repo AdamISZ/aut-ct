@@ -4,7 +4,7 @@ extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
 use base64::prelude::*;
-
+use std::time::Instant;
 use autct::utils::*;
 use autct::config::AutctConfig;
 use autct::peddleq::PedDleqProof;
@@ -103,8 +103,10 @@ pub fn get_curve_tree_with_proof<
 
     // Now we know we have a key that's in the set, we can construct the curve
     // tree from the set, and then the proof using its private key:
+    let beforect = Instant::now();
     let (curve_tree, _) = get_curve_tree::<L, F, P0, P1>(
         leaf_commitments.clone(), depth, &sr_params);
+    println!("Elapsed time for curve tree construction: {:.2?}", beforect.elapsed());
     assert_eq!(curve_tree.height(), depth);
 
     let (path_commitments, rand_scalar) =
@@ -335,6 +337,7 @@ fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
     }
     let keyset = kss.pop().unwrap();
     let context_label = cls.pop().unwrap();
+    let gctwptime = Instant::now();
     let (p0proof,
         p1proof,
         path,
@@ -349,6 +352,7 @@ fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
             autctcfg.depth.unwrap().try_into().unwrap(),
             autctcfg.generators_length_log_2.unwrap().try_into().unwrap(),
             &keyset, P);
+    println!("Elapsed time for get curve tree with proof: {:.2?}", gctwptime.elapsed());
     // if we could only find our pubkey in the list by flipping
     // the sign of our private key (this is because the BIP340 compression
     // logic is different from that in ark-ec; a TODO is to remove this

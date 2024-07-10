@@ -12,6 +12,7 @@ use relations::curve_tree::CurveTree;
 use std::io::Error;
 use std::fs;
 use std::path::PathBuf;
+use std::time::Instant;
 use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
 use relations::curve_tree::SelRerandParameters;
 
@@ -131,11 +132,13 @@ P0: SWCurveConfig<BaseField = F>>(pubkey_file_path: &str) -> Vec<Affine<P0>>{
     })
     .collect();
     let mut leaf_commitments = Vec::new();
+    let desertime = Instant::now();
     for a in pts_bin.into_iter(){
-        let x = <Affine<P0>>::deserialize_compressed(
+        let x = <Affine<P0>>::deserialize_compressed_unchecked(
             &a[..]).expect("Failed to deserialize point");
         leaf_commitments.push(x);
     }
+    println!("Elapsed time for deser: {:.2?}", desertime.elapsed());
     leaf_commitments
 }
 
