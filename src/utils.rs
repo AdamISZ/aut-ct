@@ -12,7 +12,7 @@ use relations::curve_tree::CurveTree;
 use std::io::Error;
 use std::fs;
 use std::path::PathBuf;
-use ark_serialize::CanonicalSerialize;
+use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
 use relations::curve_tree::SelRerandParameters;
 
 // all transcripts created in this project should be
@@ -120,7 +120,29 @@ pub fn affine_from_bytes_tai<C: AffineRepr>(bytes: &[u8]) -> C {
     panic!()
 }
 
+// This function takes pubkeys in binary
+// as serialized from ark and written to a file,
+// and stores them in a Vec of curve points.
 pub fn get_leaf_commitments<F: PrimeField,
+P0: SWCurveConfig<BaseField = F>>(pubkey_file_path: &str) -> Vec<Affine<P0>>{
+    let buf = fs::read(pubkey_file_path).unwrap();
+    let pts_bin: Vec<&[u8]> = buf.chunks(33).into_iter().map(|x: &[u8]| {
+        x
+    })
+    .collect();
+    let mut leaf_commitments = Vec::new();
+    for a in pts_bin.into_iter(){
+        let x = <Affine<P0>>::deserialize_compressed(
+            &a[..]).expect("Failed to deserialize point");
+        leaf_commitments.push(x);
+    }
+    leaf_commitments
+}
+
+// This function takes hex formatted pubkeys (BIP340)
+// as output from bitcoin / utxo conversion and returns
+// them as a list of curve points on P0
+pub fn get_pubkey_leaves_hex<F: PrimeField,
                             P0: SWCurveConfig<BaseField = F>>(pubkey_file_path: &str)
                             -> Vec<Affine<P0>>{
     // this whole section is clunky TODO
@@ -129,8 +151,6 @@ pub fn get_leaf_commitments<F: PrimeField,
     let filestr:String = read_file_string(pubkey_file_path)
     .expect("my failure message");
     let hex_keys_vec = filestr.split_whitespace().collect::<Vec<_>>();
-    let hex_keys_vec_count = hex_keys_vec.len();
-    println!("Pubkey count: {}", hex_keys_vec_count);
     let hex_keys = hex_keys_vec.into_iter();
     let mut b = Vec::new();
     for s in hex_keys {
@@ -148,7 +168,7 @@ pub fn get_leaf_commitments<F: PrimeField,
         match x {
             Some(y) => {leaf_commitments.push(y)},
             // not hex decoding in case invalid? TODO
-            None => {println!("Invalid pubkey detected, ignoring.");},
+            None => {println!("Invalid hex pubkey detected, ignoring.");},
         };
     }
     leaf_commitments
@@ -177,14 +197,11 @@ const L: usize,
 F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
-    file_loc: &str,
+    leaf_commitments: Vec<Affine<P0>>,
     depth: usize,
     sr_params: &SelRerandParameters<P0, P1>) -> (CurveTree<L, P0, P1>, Affine<P0>){
-    let leaf_commitments = get_leaf_commitments(file_loc);
-    let (permissible_points,
-        _permissible_randomnesses) =
-        create_permissible_points_and_randomnesses(&leaf_commitments, sr_params);
+    //let leaf_commitments = get_leaf_commitments(file_loc);
     let curve_tree = CurveTree::<L, P0, P1>::from_set(
-        &permissible_points, sr_params, Some(depth));
+        &leaf_commitments, sr_params, Some(depth));
     (curve_tree, sr_params.even_parameters.pc_gens.B_blinding)
 }

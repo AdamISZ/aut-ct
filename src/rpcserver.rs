@@ -2,7 +2,7 @@
 
 use ark_serialize::{ CanonicalDeserialize, 
     Compress, Validate};
-use autct::utils::{get_curve_tree, APP_DOMAIN_LABEL};
+use autct::utils::{get_curve_tree, get_leaf_commitments, APP_DOMAIN_LABEL};
 use tokio::{task, net::TcpListener};
 use std::fs;
 use std::io::Cursor;
@@ -35,9 +35,10 @@ pub async fn do_serve<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<d
     let mut Js: Vec<Affine<SecpConfig>> = vec![];
     let mut kss: Vec<Arc<Mutex<KeyImageStore<Affine<SecpConfig>>>>> = vec![];
     for (fl, cl) in zip(keyset_file_locs.iter(), context_labels.iter()) {
+        let leaf_commitments = get_leaf_commitments(&(fl.to_string() + ".p"));
         let (curve_tree2, _) = get_curve_tree::
         <L, SecpBase, SecpConfig, SecqConfig>(
-        &fl,
+        leaf_commitments,
         autctcfg.depth.unwrap().try_into().unwrap(), &sr_params);
         curve_trees.push(curve_tree2);
         let J = utils::get_generators(cl.as_bytes());

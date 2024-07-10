@@ -67,17 +67,32 @@ pub fn get_curve_tree_with_proof<
     // as the commitments (i.e. pedersen commitments with zero randomness) at
     // the leaf level.
     let mut privkey_parity_flip: bool = false;
-    let leaf_commitments = get_leaf_commitments::<F, P0>(pubkey_file_path);
-    // derive the index where our pubkey is in the list:
+    let leaf_commitments = get_leaf_commitments::<F, P0>(
+        &(pubkey_file_path.to_string() + ".p"));
+    // derive the index where our pubkey is in the list.
+    // but: since it will have been permissible-ized, we need to rederive the permissible
+    // version here, purely for searching:
+
+    // as well as the randomness in the blinded commitment, we also need to use the same
+    // blinding base:
+    let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
+    let mut our_pubkey_permiss1: Affine<P0> = our_pubkey;
+    while !sr_params.even_parameters.uh.is_permissible(our_pubkey_permiss1) {
+        our_pubkey_permiss1 = (our_pubkey_permiss1 + b_blinding).into();
+    }
+    let mut our_pubkey_permiss2: Affine<P0> = -our_pubkey;
+    while !sr_params.even_parameters.uh.is_permissible(our_pubkey_permiss2) {
+        our_pubkey_permiss2 = (our_pubkey_permiss2 + b_blinding).into();
+    }
     let mut key_index: i32; // we're guaranteed to overwrite or panic but the compiler insists.
     // the reason for 2 rounds of search is that BIP340 can output a different parity
     // compared to ark-ec 's compression algo.
-    key_index = match leaf_commitments.iter().position(|&x| x  == our_pubkey) {
+    key_index = match leaf_commitments.iter().position(|&x| x  == our_pubkey_permiss1) {
         None => -1,
         Some(ks) => ks.try_into().unwrap()
     };
     if key_index == -1 {
-        key_index = match leaf_commitments.iter().position(|&x| x == -our_pubkey) {
+        key_index = match leaf_commitments.iter().position(|&x| x == our_pubkey_permiss2) {
             None => panic!("provided pubkey not found in the set"),
             Some(ks) => {
                 privkey_parity_flip = true;
@@ -86,8 +101,10 @@ pub fn get_curve_tree_with_proof<
         }
     };
 
+    // Now we know we have a key that's in the set, we can construct the curve
+    // tree from the set, and then the proof using its private key:
     let (curve_tree, _) = get_curve_tree::<L, F, P0, P1>(
-        pubkey_file_path, depth, &sr_params);
+        leaf_commitments.clone(), depth, &sr_params);
     assert_eq!(curve_tree.height(), depth);
 
     let (path_commitments, rand_scalar) =
@@ -98,9 +115,6 @@ pub fn get_curve_tree_with_proof<
         &sr_params,
         &mut rng,
     );
-    // as well as the randomness in the blinded commitment, we also need to use the same
-    // blinding base:
-    let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
     // The randomness for the PedDLEQ proof will have to be the randomness
     // used in the curve tree randomization, *plus* the randomness that was used
     // to convert P to a permissible point, upon initial insertion into the tree.
@@ -173,12 +187,49 @@ async fn main() -> Result<(), Box<dyn Error>>{
                         }
                     },
         "newkeys" => {return run_create_keys(autctcfg).await},
-        _ => {println!("Invalid mode, must be 'prove', 'serve' or 'request'")},
+        "convertkeys" => {return run_convert_keys::<SecpBase, SecpConfig, SecqConfig>(autctcfg)},
+        _ => {println!("Invalid mode, must be 'prove', 'serve', 'newkeys', 'convertkeys' or 'request'")},
 
     }
     Ok(())
 }
 
+// Takes as input a hex list of actual BIP340 pubkeys
+// that should come from the utxo set;
+// converts each point into a permissible point
+// and then writes these points in binary format into
+// a new file with same name as keyset with .p appended.
+fn run_convert_keys<F: PrimeField,
+P0: SWCurveConfig<BaseField = F> + Copy,
+P1: SWCurveConfig<BaseField = P0::ScalarField,
+ScalarField = P0::BaseField> + Copy,>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+    let (cls, mut kss) = autctcfg.clone()
+    .get_context_labels_and_keysets().unwrap();
+    if kss.len() != 1 || cls.len() != 1 {
+        return Err("You may only specify one context_label:keyset in the proof request".into())
+    }
+    let keyset = kss.pop().unwrap();
+    let raw_pubkeys = get_pubkey_leaves_hex::<F, P0>(&keyset);
+    let mut rng = rand::thread_rng();
+    let generators_length = 1 << autctcfg.generators_length_log_2.unwrap();
+
+    let sr_params =
+        SelRerandParameters::<P0, P1>::new(generators_length,
+            generators_length, &mut rng);
+    let (permissible_points, _pr)
+     = create_permissible_points_and_randomnesses(
+        &raw_pubkeys, &sr_params);
+    // take vec permissible points and write it in binary as n*33 bytes
+    let mut buf: Vec<u8> = Vec::with_capacity(permissible_points.len()*33);
+    let _: Vec<_> = permissible_points
+        .iter()
+        .map(|pt: &Affine<P0>| {
+            pt.serialize_compressed(&mut buf).expect("Failed to serialize point")
+        }).collect();
+    let output_file = keyset.clone() + ".p";
+    write_file_string(&output_file, buf);
+    Ok(())
+}
 
 async fn run_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
 
