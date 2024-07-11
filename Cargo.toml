@@ -1,12 +1,22 @@
+[lib]
+# The name of the native library. This is the name which will be used in Python to import the
+# library (i.e. `import string_sum`). If you change this, you must also change the name of the
+# `#[pymodule]` in `src/lib.rs`.
+name = "autctbind"
+
+# "cdylib" is necessary to produce a shared library for Python to import from.
+crate-type = ["cdylib"]
+
 [package]
 name = "autct"
 version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+pyo3 = "0.21.1"
 rand = { version = "0.8", default-features = false }
-bulletproofs = { git = "https://github.com/AdamISZ/curve-trees", rev = "08700f59427a36d8fb2b49a7e8bc7aaf6d27454e" }
-relations = { git = "https://github.com/AdamISZ/curve-trees", rev = "08700f59427a36d8fb2b49a7e8bc7aaf6d27454e" }
+bulletproofs = { git = "https://github.com/AdamISZ/curve-trees", rev = "d76bd2837d4556b1d451055e4c381e5cb5abd00c" }
+relations = { git = "https://github.com/AdamISZ/curve-trees", rev = "d76bd2837d4556b1d451055e4c381e5cb5abd00c" }
 ark-ff = { version = "0.4.0"}
 ark-ec = { version = "0.4.0"}
 ark-serialize = { version = "0.4.0" } 
@@ -40,9 +50,9 @@ env_logger = "0.10"
 itertools = "0.12"
 base64 = "^0.22.0"
 
-[[bin]]
-name = "autct"
-path = "src/autct.rs"
+#[[bin]]
+#name = "autct"
+#path = "src/autct.rs"
 
 [features]
 default = ["asm"]

@@ -4,12 +4,11 @@ extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
 use base64::prelude::*;
-use std::time::Instant;
-use autct::utils::*;
-use autct::config::AutctConfig;
-use autct::peddleq::PedDleqProof;
-mod rpcclient;
-mod rpcserver;
+use crate::utils::*;
+use crate::config::AutctConfig;
+use crate::peddleq::PedDleqProof;
+use crate::rpcclient;
+use crate::rpcserver;
 use bitcoin::{Address, PrivateKey, XOnlyPublicKey};
 use bitcoin::key::{Secp256k1, TapTweak, UntweakedKeypair};
 
@@ -21,7 +20,6 @@ use ark_ff::{PrimeField, Zero, One};
 use ark_serialize::{
     CanonicalSerialize, Compress};
 use relations::curve_tree::{SelRerandParameters, SelectAndRerandomizePath};
-use std::error::Error;
 use std::ops::{Mul, Add};
 use merlin::Transcript;
 
@@ -29,13 +27,15 @@ use ark_ec::short_weierstrass::Affine;
 use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
 use ark_secq256k1::Config as SecqConfig;
 
+use pyo3::prelude::*;
+use std::time::Instant;
+
 // this function returns the curve tree for the set of points
 // read from disk (currently pubkey file location is passed as an argument), and
 // then returns a tree, along with two bulletproofs for secp and secq,
 // and the "merkle proof" of (blinded) commitments to the root.
 // For the details on this proof, see "Select-and-Rerandomize" in the paper.
 pub fn get_curve_tree_with_proof<
-    const L: usize,
     F: PrimeField,
     P0: SWCurveConfig<BaseField = F> + Copy,
     P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,
@@ -45,7 +45,7 @@ pub fn get_curve_tree_with_proof<
     pubkey_file_path: &str,
     our_pubkey: Affine<P0>,
 ) -> (R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>,
-    SelectAndRerandomizePath<L, P0, P1>,
+    SelectAndRerandomizePath<P0, P1>,
     P0::ScalarField,
     Affine<P0>, Affine<P0>, bool) {
     let mut rng = rand::thread_rng();
@@ -104,7 +104,7 @@ pub fn get_curve_tree_with_proof<
     // Now we know we have a key that's in the set, we can construct the curve
     // tree from the set, and then the proof using its private key:
     let beforect = Instant::now();
-    let (curve_tree, _) = get_curve_tree::<L, F, P0, P1>(
+    let (curve_tree, _) = get_curve_tree::<F, P0, P1>(
         leaf_commitments.clone(), depth, &sr_params);
     println!("Elapsed time for curve tree construction: {:.2?}", beforect.elapsed());
     assert_eq!(curve_tree.height(), depth);
@@ -162,9 +162,9 @@ pub fn get_curve_tree_with_proof<
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>>{
+async fn main() -> Result<(), CustomError>{
 
-    let autctcfg = AutctConfig::build()?;
+    if let Ok(autctcfg) = AutctConfig::build(){
     // TODO maybe remove this code duplication?
     // The problem is that `L`, the branching factor of tree,
     // *must* be a const generic, as I understand it,
@@ -173,25 +173,18 @@ async fn main() -> Result<(), Box<dyn Error>>{
     // with a macro, or if it's worth it to remove this
     // minor duplication.
     match autctcfg.clone().mode.unwrap().as_str() {
-        "prove" => {match autctcfg.branching_factor {
-                        Some(256) => return run_prover::<256>(autctcfg),
-                        Some(512) => return run_prover::<512>(autctcfg),
-                        Some(1024) => return run_prover::<1024>(autctcfg),
-                        _ => {panic!("Invalid branching factor")},
-                        }
+        "prove" => {return run_prover(autctcfg)
                     },
         "request" => {return run_request(autctcfg).await},
-        "serve" => {match autctcfg.branching_factor {
-                        Some(256) => return rpcserver::do_serve::<256>(autctcfg).await,
-                        Some(512) => return rpcserver::do_serve::<512>(autctcfg).await,
-                        Some(1024) => return rpcserver::do_serve::<1024>(autctcfg).await,
-                        _ => {panic!("Invalid branching factor")},
-                        }
+        "serve" => {return rpcserver::do_serve(autctcfg).await
                     },
         "newkeys" => {return run_create_keys(autctcfg).await},
         "convertkeys" => {return run_convert_keys::<SecpBase, SecpConfig, SecqConfig>(autctcfg)},
         _ => {println!("Invalid mode, must be 'prove', 'serve', 'newkeys', 'convertkeys' or 'request'")},
 
+    }}
+    else {
+        return Err(CustomError{});
     }
     Ok(())
 }
@@ -201,14 +194,14 @@ async fn main() -> Result<(), Box<dyn Error>>{
 // converts each point into a permissible point
 // and then writes these points in binary format into
 // a new file with same name as keyset with .p appended.
-fn run_convert_keys<F: PrimeField,
+pub fn run_convert_keys<F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField,
-ScalarField = P0::BaseField> + Copy,>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+ScalarField = P0::BaseField> + Copy,>(autctcfg: AutctConfig) -> Result<(), CustomError>{
     let (cls, mut kss) = autctcfg.clone()
     .get_context_labels_and_keysets().unwrap();
     if kss.len() != 1 || cls.len() != 1 {
-        return Err("You may only specify one context_label:keyset in the proof request".into())
+        return Err(CustomError{});
     }
     let keyset = kss.pop().unwrap();
     let raw_pubkeys = get_pubkey_leaves_hex::<F, P0>(&keyset);
@@ -233,7 +226,7 @@ ScalarField = P0::BaseField> + Copy,>(autctcfg: AutctConfig) -> Result<(), Box<d
     Ok(())
 }
 
-async fn run_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
+async fn run_create_keys(autctcfg: AutctConfig) ->Result<(), CustomError> {
 
     let nw = match autctcfg.bc_network.unwrap().as_str() {
         "mainnet" => bitcoin::Network::Bitcoin,
@@ -259,7 +252,7 @@ async fn run_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
     println!("The WIF string above can be imported into e.g. Sparrow, Core to sweep or access the funds in it.");
     Ok(())
 }
-async fn run_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
+async fn run_request(autctcfg: AutctConfig) -> Result<(), CustomError> {
     let res = rpcclient::do_request(autctcfg).await;
     match res {
         Ok(rest) => {
@@ -275,11 +268,13 @@ async fn run_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
                 _ => println!("Unrecognized error code from server?"),
             }
         },
-        Err(rest) => return Err(rest),
+        Err(_) => return Err(CustomError{}),
     };
     Ok(())
 }
-fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+
+#[pyfunction]
+pub fn run_prover(autctcfg: AutctConfig) -> Result<(), CustomError>{
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     let nw = match autctcfg.bc_network.clone().unwrap().as_str() {
         "mainnet" => bitcoin::Network::Bitcoin,
@@ -333,7 +328,8 @@ fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
     let (mut cls, mut kss) = autctcfg.clone()
     .get_context_labels_and_keysets().unwrap();
     if kss.len() != 1 || cls.len() != 1 {
-        return Err("You may only specify one context_label:keyset in the proof request".into())
+        //return Err("You may only specify one context_label:keyset in the proof request".into())
+        return Err(CustomError{});
     }
     let keyset = kss.pop().unwrap();
     let context_label = cls.pop().unwrap();
@@ -345,7 +341,6 @@ fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
     H,
     root,
     privkey_parity_flip) = get_curve_tree_with_proof::<
-    L,
     SecpBase,
     SecpConfig,
     SecqConfig>(

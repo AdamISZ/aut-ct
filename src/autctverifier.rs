@@ -27,14 +27,13 @@ use std::time::Instant;
 // items, which are all deserialized from the proof string given
 // by the Prover)
 pub fn verify_curve_tree_proof<
-    const L: usize,
     F: PrimeField,
     P0: SWCurveConfig<BaseField = F> + Copy,
     P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,
 >(
-    path_commitments: SelectAndRerandomizePath<L, P0, P1>,
+    path_commitments: SelectAndRerandomizePath<P0, P1>,
     sr_params: &SelRerandParameters<P0, P1>,
-    curve_tree: &CurveTree<L, P0, P1>,
+    curve_tree: &CurveTree<P0, P1>,
     p0proof: R1CSProof<Affine<P0>>,
     p1proof: R1CSProof<Affine<P1>>,
     root: Affine<P0>,

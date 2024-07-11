@@ -11,6 +11,9 @@ use ark_ec::short_weierstrass::Affine;
 use relations::curve_tree::CurveTree;
 use std::io::Error;
 use std::fs;
+use pyo3::PyErr;
+use pyo3::exceptions::PyOSError;
+use std::fmt;
 use std::path::PathBuf;
 use std::time::Instant;
 use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
@@ -27,6 +30,26 @@ pub const CONTEXT_LABEL: &[u8] = b"default-app-context-label";
 // an ephemeral user id. Like the above, the default exists
 // primarily for testing
 pub const USER_STRING: &[u8] = b"name-goes-here";
+
+// TODO this customerror class is not developed;
+// I just needed an error class that can be handled
+// by pymethod as part of Result, because Result<thing, Box<dyn Error>>
+// apparently just doesn't work with pyo3 (?)
+#[derive(Debug)]
+pub struct CustomError;
+
+impl std::error::Error for CustomError {}
+
+impl fmt::Display for CustomError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Oh no!")
+    }
+}
+impl std::convert::From<CustomError> for PyErr {
+    fn from(err: CustomError) -> PyErr {
+        PyOSError::new_err(err.to_string())
+    }
+}
 
 // Given a hex string of big-endian encoding,
 // first change to little endian bytes and then deserialize
@@ -196,15 +219,14 @@ pub fn create_permissible_points_and_randomnesses<
 }
 
 pub fn get_curve_tree<
-const L: usize,
 F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
     leaf_commitments: Vec<Affine<P0>>,
     depth: usize,
-    sr_params: &SelRerandParameters<P0, P1>) -> (CurveTree<L, P0, P1>, Affine<P0>){
+    sr_params: &SelRerandParameters<P0, P1>) -> (CurveTree<P0, P1>, Affine<P0>){
     //let leaf_commitments = get_leaf_commitments(file_loc);
-    let curve_tree = CurveTree::<L, P0, P1>::from_set(
+    let curve_tree = CurveTree::<P0, P1>::from_set(
         &leaf_commitments, sr_params, Some(depth));
     (curve_tree, sr_params.even_parameters.pc_gens.B_blinding)
 }

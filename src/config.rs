@@ -4,6 +4,8 @@ use std::error::Error;
 use std::path::PathBuf;
 use clap::{Parser, CommandFactory, Command};
 
+use pyo3::pyclass;
+
 // This handles config items with syntax: "a:b, c:d,.."
 fn get_params_from_config_string(params: String) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
     let pairs: Vec<String> = params.split(",").map(|s| s.to_string()).collect();
@@ -37,26 +39,31 @@ The recipe for this is taken from:
 https://stackoverflow.com/a/75981247
 */
 
+// note this struct has to be a pyclass
+// if we want run_prove to be callable from
+// a python binding, as it is the (only) argument
+// to that call:
 #[derive(Parser, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[command(about, long_about = None, next_line_help = true)]
 #[clap(version, about="Anonymous Usage Tokens from Curve Trees")]
+#[pyclass]
 pub struct AutctConfig {
     /// `mode` is one of: "newkeys", "prove",
     /// "serve", "convertkeys" or "request"
-    #[arg(short('M'), long, required=true)]
+    #[arg(short('M'), long, required=false)]
     #[clap(verbatim_doc_comment)]
     pub mode: Option<String>,
-    #[arg(short('V'), long, required=false)]
-    pub version: Option<u8>,
+    //#[arg(short('V'), long, required=false)]
+    //pub version: Option<u8>,
     /// Enter a comma separated list, in this format:
     /// context:keysetname,context2:keysetname2,..
     /// Note: each context specifies the application context
     /// over which scarcity is enforced, each should
     /// be different. The keysetname specifies the file from
     /// which the CurveTree will be defined
-    #[arg(short('k'), long, required=true)]
+    #[arg(short('k'), long, required=false)]
     #[clap(verbatim_doc_comment)]
-    pub keysets: String,
+    pub keysets: Option<String>,
     /// Intended as a BIP-340-hex encoding of a secp256k1 point,
     /// though anything is allowed:
     #[arg(short('u'), long, required=false)]
@@ -120,11 +127,11 @@ impl ::std::default::Default for AutctConfig {
     let context_label = std::str::from_utf8(utils::CONTEXT_LABEL).unwrap().to_string(); 
          Self {
     mode: Some("newkey".to_string()),
-    version: Some(0),
-    keysets: context_label + ":default",
+    //version: Some(0),
+    keysets: Some(context_label + ":default"),
     user_string,
     depth: Some(2),
-    branching_factor: Some(256),
+    branching_factor: Some(1024),
     generators_length_log_2: Some(11),
     rpc_host: Some("127.0.0.1".to_string()),
     rpc_port: Some(23333),
@@ -155,8 +162,8 @@ impl AutctConfig {
         let config_file: AutctConfig = confy::load(app_name, None)?;
         // derp:
         self.mode = self.mode.or(config_file.mode);
-        self.version = self.version.or(config_file.version);
-        //self.keysets = self.keysets.or(config_file.keysets);
+        //self.version = self.version.or(config_file.version);
+        self.keysets = self.keysets.or(config_file.keysets);
         self.user_string = self.user_string.or(config_file.user_string);
         self.depth = self.depth.or(config_file.depth);
         self.branching_factor = self.branching_factor.or(config_file.branching_factor);
@@ -193,7 +200,7 @@ impl AutctConfig {
     }
 
     pub fn get_context_labels_and_keysets(self) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
-        get_params_from_config_string(self.keysets)
+        get_params_from_config_string(self.keysets.unwrap())
     }
 
 }
