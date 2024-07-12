@@ -20,12 +20,31 @@ use ark_ec::short_weierstrass::Affine;
 
 use std::time::Instant;
 
-// This function thows assertion errors if the given
-// set (curve_tree, p0proof, p1proof, path_commitments, root)
-// do not validate ('curve_tree' is generated locally by the
-// verifier from the keyset, and that is compared against the other
-// items, which are all deserialized from the proof string given
-// by the Prover)
+/// Given a Curve Tree select-and-rerandomize proof,
+/// verifies it and returns an error if fails, or Ok() if not.
+/// 
+/// # Arguments
+///
+/// * `path_commitments` - a SelectandRerandomize path provide by the prover
+///    (like a merkle path)
+/// * `sr_params` - SelectandRerandomize parameters
+/// * `curve_tree` - a Curve Tree object held by the verifier against which
+///    the proof will be checked.
+/// * `p0_proof` - a bulletproof over secp256k1
+/// *  `p1_proof` - a bulletproof over secq256k1
+/// *  `root` - the curve tree root claimed by the prover
+///
+/// # Returns:
+/// 
+///  * `Affine<P0>` - a single curve point which is the rerandomized leaf used in the proof
+/// 
+/// # Errors:
+/// 
+///  * R1CSError - if either of the two bulletproofs fails to verify
+///  * AssertionError - if the root claimed by the prover does not match the verifier's Tree
+/// 
+/// # Panics:
+///   * if the tree reconstructed from the prover does not have even parity
 pub fn verify_curve_tree_proof<
     const L: usize,
     F: PrimeField,
@@ -87,7 +106,6 @@ pub fn verify_curve_tree_proof<
         verifier_root = *newpath.even_commitments.first().unwrap();
     }
     else {
-        // derp, see above TODO
         panic!("Wrong root parity, should be even");
     }
     assert_eq!(root, verifier_root);

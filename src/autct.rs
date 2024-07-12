@@ -29,11 +29,46 @@ use ark_ec::short_weierstrass::Affine;
 use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
 use ark_secq256k1::Config as SecqConfig;
 
-// this function returns the curve tree for the set of points
-// read from disk (currently pubkey file location is passed as an argument), and
-// then returns a tree, along with two bulletproofs for secp and secq,
-// and the "merkle proof" of (blinded) commitments to the root.
-// For the details on this proof, see "Select-and-Rerandomize" in the paper.
+
+/// Given a set of pubkeys, curve tree parameters, and a single
+/// additional pubkey P, returns a Curve Tree and a proof of inclusion
+/// of P in ZK, using the "Select and Rerandomize" algorithm,
+///
+/// # Arguments
+///
+/// * `depth` - depth of the curve tree, must be even, default 2
+/// * `generators_length_log_2` - needed for building the bulletproofs.
+///    - will be deprecated in future
+/// * `pubkey_file_path` - the file path as a string to the location of the
+///    binary file containing the pubkeys to be included in the set in the Curve Tree.
+///    Note that these must already have been converted from the raw pubkeys to
+///    permissible points, in the terminology of the paper.
+///    The format of the file is a simple concatenation of each 33 byte serialization
+///    (compressed) of each curve point, using the serialization of ark-serialize.
+/// * `our_pubkey` - an affine representation of a point on the base curve, here
+///    secp256k1. This is the point which we are proving is included in the tree.
+///
+/// # Returns:
+/// 
+///  * `p0_proof` - bulletproof over secp256k1
+///  * `p1_proof` - bulletproof over secq256k1
+///  * `path_commitments` - the merkle proof - a single curve point for each layer of the tree
+///  *  `returned_rand` - the randomization value `r` used in select and rerandomize for the
+///     "rerandomization" of the member (curve point) we're proving for. This needs to be
+///     kept track of by the caller so that it can be replicated in the PedDLEQ proof.
+///  * `b_blinding` - the NUMS point H used in the Pedersen commitments xG + rH
+///     (this may be deprecated as an argument in future, since it can be a constant.)
+///  * `root` - the root curve point of the tree, which will be a point on secp256k1
+///    since we require an even depth
+///  * `privkey_parity_flip` - a boolean, true if the sign of the private key will have to be
+///    flipped to give the right member of the set of points in the tree. This is needed because
+///    BIP340's serialization is ambiguous about the sign of the private key, and ark-serialize
+///    uses a different compression algorithm.
+/// 
+/// # Panics:
+///   * if the provided curve point our_pubkey does not correspond, even with sign flipping,
+///     to one of the permissible points in the set located in `pubkey_file_path` (TODO -
+///     this should return an error instead).
 pub fn get_curve_tree_with_proof<
     const L: usize,
     F: PrimeField,
@@ -52,7 +87,8 @@ pub fn get_curve_tree_with_proof<
     let generators_length = 1 << generators_length_log_2;
 
     let sr_params =
-        SelRerandParameters::<P0, P1>::new(generators_length, generators_length, &mut rng);
+        SelRerandParameters::<P0, P1>::new(generators_length,
+            generators_length, &mut rng);
 
     let p0_transcript = Transcript::new(b"select_and_rerandomize");
     let mut p0_prover: Prover<_, Affine<P0>> =
@@ -62,20 +98,19 @@ pub fn get_curve_tree_with_proof<
     let mut p1_prover: Prover<_, Affine<P1>> =
         Prover::new(&sr_params.odd_parameters.pc_gens, p1_transcript);
 
+    let mut privkey_parity_flip: bool = false;
+    // as well as the randomness in the blinded commitment, we also need to use the same
+    // blinding base:
+    let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
     // these are called 'leaf commitments' and not 'leaves', but it's just
     // to emphasize that we are not committing to scalars, but using points (i.e. pubkeys)
     // as the commitments (i.e. pedersen commitments with zero randomness) at
     // the leaf level.
-    let mut privkey_parity_flip: bool = false;
     let leaf_commitments = get_leaf_commitments::<F, P0>(
         &(pubkey_file_path.to_string() + ".p"));
     // derive the index where our pubkey is in the list.
     // but: since it will have been permissible-ized, we need to rederive the permissible
     // version here, purely for searching:
-
-    // as well as the randomness in the blinded commitment, we also need to use the same
-    // blinding base:
-    let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
     let mut our_pubkey_permiss1: Affine<P0> = our_pubkey;
     while !sr_params.even_parameters.uh.is_permissible(our_pubkey_permiss1) {
         our_pubkey_permiss1 = (our_pubkey_permiss1 + b_blinding).into();
@@ -102,7 +137,7 @@ pub fn get_curve_tree_with_proof<
     };
 
     // Now we know we have a key that's in the set, we can construct the curve
-    // tree from the set, and then the proof using its private key:
+    // tree from the set, and then the proof of inclusion of this specific pubkey:
     let beforect = Instant::now();
     let (curve_tree, _) = get_curve_tree::<L, F, P0, P1>(
         leaf_commitments.clone(), depth, &sr_params);
@@ -120,6 +155,9 @@ pub fn get_curve_tree_with_proof<
     // The randomness for the PedDLEQ proof will have to be the randomness
     // used in the curve tree randomization, *plus* the randomness that was used
     // to convert P to a permissible point, upon initial insertion into the tree.
+    // (additional note Jul24: this is guaranteed to be zero in the current implementation,
+    // since we read already-permissible points in this function now. Still it does
+    // no harm, and this may change in future).
     let mut r_offset: P0::ScalarField = P0::ScalarField::zero();
     let lcindex: usize = key_index.try_into().unwrap();
     let mut p_prime: Affine<P0> = leaf_commitments[lcindex];
@@ -147,7 +185,6 @@ pub fn get_curve_tree_with_proof<
         root = *newpath.even_commitments.first().unwrap();
     }
     else {
-        // derp, see above TODO
         panic!("Wrong root parity, should be even");
     }
     let p0_proof = p0_prover
@@ -196,11 +233,23 @@ async fn main() -> Result<(), Box<dyn Error>>{
     Ok(())
 }
 
-// Takes as input a hex list of actual BIP340 pubkeys
-// that should come from the utxo set;
-// converts each point into a permissible point
-// and then writes these points in binary format into
-// a new file with same name as keyset with .p appended.
+/// Takes as input, via the config struct (defaults to the
+/// contents of the config file), a hex list of actual BIP340 pubkeys
+/// that should come from the utxo set;
+/// converts each point into a permissible point
+/// and then writes these points in binary format into
+/// a new file with same name as keyset with .p appended.
+///
+/// # Arguments
+///
+/// * `auctcfg` - an instantiation of the struct autct.config.AutctConfig
+///
+/// # Returns:
+///   * `Ok()` or `Error`
+/// 
+/// # Errors:
+///   * if the `keysets` string in the `AutctConfig` object, which is a comma
+///     separated list, contains more than one entry.
 fn run_convert_keys<F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField,
@@ -233,6 +282,24 @@ ScalarField = P0::BaseField> + Copy,>(autctcfg: AutctConfig) -> Result<(), Box<d
     Ok(())
 }
 
+/// Takes as input, via the config struct (defaults to the
+/// contents of the config file), the `bc_network`, and outputs
+/// a randomly generated bitcoin private key in WIF format,
+/// along with the corresponding p2tr (taproot) address.
+///
+/// Note that this currently outputs the private key to stdout -
+/// TODO - write to file instead, with encryption.
+/// 
+/// # Arguments
+///
+/// * `auctcfg` - an instantiation of the struct autct.config.AutctConfig
+///
+/// # Returns:
+///   * `Ok()` or `Error`
+/// 
+/// # Panics:
+///   * if the `bc_network` field in the AutctConfig struct is not one of
+///     the expected values.
 async fn run_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
 
     let nw = match autctcfg.bc_network.unwrap().as_str() {
@@ -259,6 +326,24 @@ async fn run_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
     println!("The WIF string above can be imported into e.g. Sparrow, Core to sweep or access the funds in it.");
     Ok(())
 }
+
+/// Takes as input, via the config struct (defaults to the
+/// contents of the config file), the serialized proof and the
+/// chosen keyset, and outputs a response from the server
+/// indicating whether the proof is accepted or not (and optionally
+/// some other data such as a credential.)
+///
+/// See rpcclient::do_request() and RPCVerifer::verify()
+/// 
+/// # Arguments
+///
+/// * `auctcfg` - an instantiation of the struct autct.config.AutctConfig
+///
+/// # Returns:
+///   * `Ok()` or `Error`
+/// 
+/// Note that verification failure is encapsulated in the return code
+/// and message; any response from the server is not a Rust Error.
 async fn run_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
     let res = rpcclient::do_request(autctcfg).await;
     match res {
@@ -279,6 +364,34 @@ async fn run_request(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
     };
     Ok(())
 }
+
+/// Takes as input, via the config struct (defaults to the
+/// contents of the config file), the file in which is the private
+/// key, the keyset and other Curve Tree parameters, and writes
+/// a serialization of the curve tree + peddleq proof to the
+/// proof file location specified in the config, or, if the config
+/// specifies it, to a base64 string on stdout.
+///
+/// 
+/// # Arguments
+///
+/// * `auctcfg` - an instantiation of the struct autct.config.AutctConfig
+///
+/// # Returns:
+///   * `Ok()` or `Error`
+/// 
+/// # Errors:
+///   * if the private key file specified is not readable
+///   * if more than one keyset is specified in the `keysets` config string.
+/// 
+/// # Panics:
+///   * if the value in `bc_network` is not a valid network
+///     (TODO make this an error)
+///   * if the string in the private key file is not a valid
+///     private key serialization in WIF or hex format.
+/// 
+/// Note that verification failure is encapsulated in the return code
+/// and message; any response from the server is not a Rust Error.
 fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     let nw = match autctcfg.bc_network.clone().unwrap().as_str() {
@@ -287,7 +400,7 @@ fn run_prover<const L: usize>(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
         "regtest" => bitcoin::Network::Regtest,
        _ => panic!("Invalid bitcoin network string in config."),
     };
-    let secp = Secp256k1::new(); // is the context global? need to check
+    let secp = Secp256k1::new();
     // read privkey from file; we prioritize WIF format for compatibility
     // with external wallets, but if that fails, we attempt to read it
     // as raw hex:
