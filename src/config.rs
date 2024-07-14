@@ -4,8 +4,6 @@ use std::error::Error;
 use std::path::PathBuf;
 use clap::{Parser, CommandFactory, Command};
 
-use pyo3::pyclass;
-
 // This handles config items with syntax: "a:b, c:d,.."
 fn get_params_from_config_string(params: String) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
     let pairs: Vec<String> = params.split(",").map(|s| s.to_string()).collect();
@@ -46,7 +44,6 @@ https://stackoverflow.com/a/75981247
 #[derive(Parser, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[command(about, long_about = None, next_line_help = true)]
 #[clap(version, about="Anonymous Usage Tokens from Curve Trees")]
-#[pyclass]
 pub struct AutctConfig {
     /// `mode` is one of: "newkeys", "prove",
     /// "serve", "convertkeys" or "request"

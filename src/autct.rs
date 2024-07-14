@@ -4,11 +4,11 @@ extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
 use base64::prelude::*;
-use crate::utils::*;
-use crate::config::AutctConfig;
-use crate::peddleq::PedDleqProof;
-use crate::rpcclient;
-use crate::rpcserver;
+use autct::utils::*;
+use autct::config::AutctConfig;
+use autct::peddleq::PedDleqProof;
+mod rpcclient;
+mod rpcserver;
 use bitcoin::{Address, PrivateKey, XOnlyPublicKey};
 use bitcoin::key::{Secp256k1, TapTweak, UntweakedKeypair};
 
@@ -27,7 +27,6 @@ use ark_ec::short_weierstrass::Affine;
 use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
 use ark_secq256k1::Config as SecqConfig;
 
-use pyo3::prelude::*;
 use std::time::Instant;
 
 // this function returns the curve tree for the set of points
@@ -273,7 +272,6 @@ async fn run_request(autctcfg: AutctConfig) -> Result<(), CustomError> {
     Ok(())
 }
 
-#[pyfunction]
 pub fn run_prover(autctcfg: AutctConfig) -> Result<(), CustomError>{
     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
     let nw = match autctcfg.bc_network.clone().unwrap().as_str() {

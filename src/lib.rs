@@ -5,9 +5,6 @@ pub mod utils;
 pub mod autctverifier;
 pub mod config;
 pub mod keyimagestore;
-mod autct;
-mod rpcclient;
-mod rpcserver;
 
 extern crate rand;
 extern crate alloc;
@@ -25,33 +22,11 @@ use relations::curve_tree::SelectAndRerandomizePath;
 use merlin::Transcript;
 
 use ark_ec::short_weierstrass::Affine;
-use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
+use ark_secp256k1::Config as SecpConfig;
 use ark_secq256k1::Config as SecqConfig;
 use std::io::Cursor;
 use std::time::Instant;
-
-use pyo3::prelude::*;
-use crate::autct::{run_prover, run_convert_keys};
-
-#[pyfunction]
-fn run_convertkeys_wrap() -> Result<(), CustomError> {
-    let autctcfg = config::AutctConfig::build().unwrap();
-    run_convert_keys::<SecpBase, SecpConfig, SecqConfig>(autctcfg)
-}
-#[pyfunction]
-fn run_prover_wrap() -> Result<(), CustomError> {
-    let autctcfg = config::AutctConfig::build().unwrap();
-    run_prover(autctcfg)
-}
-/// A Python module implemented in Rust. The name of this function must match
-/// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
-/// import the module.
-#[pymodule]
-fn autctbind(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(run_prover_wrap, m)?)?;
-    m.add_function(wrap_pyfunction!(run_convertkeys_wrap, m)?)?;
-    Ok(())
-}
+use toy_rpc::macros::export_impl;
 
 pub mod rpc {
 
@@ -100,7 +75,7 @@ pub mod rpc {
         pub Js: Vec<Affine<SecpConfig>>,
         pub ks: Vec<Arc<Mutex<keyimagestore::KeyImageStore<Affine<SecpConfig>>>>>,
     }
-
+    #[export_impl]
     impl RPCProofVerifier {
 
         // currently the only request in the API:
@@ -119,6 +94,7 @@ pub mod rpc {
         // -3 Means that the proofs are valid but the key image is rejected
         //    as a double spend.
         // -4 means that the keyset chosen does not match (see below)
+        #[export_method]
         pub async fn verify(&self, args: RPCProofVerifyRequest) -> Result<RPCProofVerifyResponse, String>{
             let verif_request = args;
 
@@ -231,80 +207,6 @@ pub mod rpc {
                 resp.resource_string = Some("soup-for-you".to_string());
                 resp.key_image = Some(str_E);
                 Ok(resp)
-            }
-        }
-    }
-
-    // NOTE: The remaining code here is the expanded-out
-    // code from using the macros `export_impl` and `export_method`
-    // which previously were used for the above RPCProofVerifier
-    // and verify() code (use `cargo expand --lib rpc > toafile.txt`).
-    // The reason for this ugly/janky choice is that these macros do
-    // not (as far as I can tell) support const generics, and throw
-    // compilation error if you try to use them on a struct with such
-    // a const generic, so I expanded out the macros and re-added L by hand.
-    impl RPCProofVerifier {
-        pub fn verify_handler(
-            self: std::sync::Arc<Self>,
-            mut deserializer: Box<
-                dyn toy_rpc::erased_serde::Deserializer<'static> + Send,
-            >,
-        ) -> toy_rpc::service::HandlerResultFut {
-            Box::pin(async move {
-                let req: RPCProofVerifyRequest = toy_rpc::erased_serde::deserialize(
-                        &mut deserializer,
-                    )
-                    .map_err(|e| toy_rpc::error::Error::ParseError(Box::new(e)))?;
-                self.verify(req)
-                    .await
-                    .map(|r| {
-                        Box::new(r)
-                            as Box<
-                                dyn toy_rpc::erased_serde::Serialize + Send + Sync + 'static,
-                            >
-                    })
-                    .map_err(|err| err.into())
-            })
-        }
-    }
-    impl toy_rpc::util::RegisterService for RPCProofVerifier {
-        fn handlers() -> std::collections::HashMap<
-            &'static str,
-            toy_rpc::service::AsyncHandler<Self>,
-        > {
-            let mut map = std::collections::HashMap::<
-                &'static str,
-                toy_rpc::service::AsyncHandler<RPCProofVerifier>,
-            >::new();
-            map.insert("verify", RPCProofVerifier::verify_handler);
-            map
-        }
-        fn default_name() -> &'static str {
-            "RPCProofVerifier"
-        }
-    }
-    pub struct RPCProofVerifierClient<'c, AckMode> {
-        client: &'c toy_rpc::client::Client<AckMode>,
-        service_name: &'c str,
-    }
-    impl<'c, AckMode> RPCProofVerifierClient<'c, AckMode> {
-        pub fn verify<A>(&'c self, args: A) -> toy_rpc::client::Call<RPCProofVerifyResponse>
-        where
-            A: std::borrow::Borrow<RPCProofVerifyRequest> + Send + Sync
-                + toy_rpc::serde::Serialize + 'static,
-        {
-            self.client.call("RPCProofVerifier.verify", args)
-        }
-    }
-    pub trait RPCProofVerifierClientStub<AckMode> {
-        fn r_p_c_proof_verifier<'c>(&'c self) -> RPCProofVerifierClient<AckMode>;
-    }
-    impl<AckMode> RPCProofVerifierClientStub<AckMode>
-    for toy_rpc::client::Client<AckMode> {
-        fn r_p_c_proof_verifier<'c>(&'c self) -> RPCProofVerifierClient<AckMode> {
-            RPCProofVerifierClient {
-                client: self,
-                service_name: "RPCProofVerifier",
             }
         }
     }

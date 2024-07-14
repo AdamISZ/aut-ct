@@ -11,8 +11,6 @@ use ark_ec::short_weierstrass::Affine;
 use relations::curve_tree::CurveTree;
 use std::io::Error;
 use std::fs;
-use pyo3::PyErr;
-use pyo3::exceptions::PyOSError;
 use std::fmt;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -45,11 +43,7 @@ impl fmt::Display for CustomError {
         write!(f, "Oh no!")
     }
 }
-impl std::convert::From<CustomError> for PyErr {
-    fn from(err: CustomError) -> PyErr {
-        PyOSError::new_err(err.to_string())
-    }
-}
+
 
 // Given a hex string of big-endian encoding,
 // first change to little endian bytes and then deserialize
