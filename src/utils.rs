@@ -4,18 +4,20 @@ extern crate alloc;
 extern crate ark_secp256k1;
 
 use ark_ff::Field;
-use ark_ff::PrimeField;
+use ark_ff::{PrimeField, Zero, One};
 use ark_ec::AffineRepr;
 use ark_ec::short_weierstrass::SWCurveConfig;
 use ark_ec::short_weierstrass::Affine;
 use relations::curve_tree::CurveTree;
-use std::io::Error;
+use std::error::Error;
 use std::fs;
-use std::fmt;
 use std::path::PathBuf;
 use std::time::Instant;
 use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
-use relations::curve_tree::SelRerandParameters;
+use relations::curve_tree::{SelRerandParameters, SelectAndRerandomizePath};
+use bulletproofs::r1cs::R1CSProof;
+use bulletproofs::r1cs::Prover;
+use merlin::Transcript;
 
 // all transcripts created in this project should be
 // initialized with this name:
@@ -29,20 +31,6 @@ pub const CONTEXT_LABEL: &[u8] = b"default-app-context-label";
 // primarily for testing
 pub const USER_STRING: &[u8] = b"name-goes-here";
 
-// TODO this customerror class is not developed;
-// I just needed an error class that can be handled
-// by pymethod as part of Result, because Result<thing, Box<dyn Error>>
-// apparently just doesn't work with pyo3 (?)
-#[derive(Debug)]
-pub struct CustomError;
-
-impl std::error::Error for CustomError {}
-
-impl fmt::Display for CustomError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Oh no!")
-    }
-}
 
 
 // Given a hex string of big-endian encoding,
@@ -102,7 +90,7 @@ pub fn field_as_bytes<F: Field>(field: &F) -> Vec<u8> {
     bytes
 }
 
-pub fn read_file_string(filepath: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub fn read_file_string(filepath: &str) -> Result<String, Box<dyn Error>> {
     let resp = match fs::read_to_string(filepath) {
         Ok(data) => data,
         Err(e) => {return Err(e.into());}
@@ -114,7 +102,7 @@ pub fn write_file_string(filepath: &str, mut buf: Vec<u8>) -> () {
     fs::write(filepath, &mut buf).expect("Failed to write to file");
 }
 
-pub fn write_file_string2(loc: PathBuf, mut buf: Vec<u8>) ->Result<(), Error> {
+pub fn write_file_string2(loc: PathBuf, mut buf: Vec<u8>) ->Result<(), std::io::Error> {
     fs::write(loc, &mut buf)
 }
 
@@ -223,4 +211,167 @@ P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Co
     let curve_tree = CurveTree::<P0, P1>::from_set(
         &leaf_commitments, sr_params, Some(depth));
     (curve_tree, sr_params.even_parameters.pc_gens.B_blinding)
+}
+
+// this function returns the curve tree for the set of points
+// read from disk (currently pubkey file location is passed as an argument), and
+// then returns a tree, along with two bulletproofs for secp and secq,
+// and the "merkle proof" of (blinded) commitments to the root.
+// For the details on this proof, see "Select-and-Rerandomize" in the paper.
+pub fn get_curve_tree_with_proof<
+    F: PrimeField,
+    P0: SWCurveConfig<BaseField = F> + Copy,
+    P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,
+>(
+    depth: usize,
+    generators_length_log_2: usize,
+    pubkey_file_path: &str,
+    our_pubkey: Affine<P0>,
+) -> Result<(R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>,
+    SelectAndRerandomizePath<P0, P1>,
+    P0::ScalarField,
+    Affine<P0>, Affine<P0>, bool), Box<dyn std::error::Error>> {
+    let mut rng = rand::thread_rng();
+    let generators_length = 1 << generators_length_log_2;
+
+    let sr_params =
+        SelRerandParameters::<P0, P1>::new(generators_length, generators_length, &mut rng);
+
+    let p0_transcript = Transcript::new(b"select_and_rerandomize");
+    let mut p0_prover: Prover<_, Affine<P0>> =
+        Prover::new(&sr_params.even_parameters.pc_gens, p0_transcript);
+
+    let p1_transcript = Transcript::new(b"select_and_rerandomize");
+    let mut p1_prover: Prover<_, Affine<P1>> =
+        Prover::new(&sr_params.odd_parameters.pc_gens, p1_transcript);
+
+    // these are called 'leaf commitments' and not 'leaves', but it's just
+    // to emphasize that we are not committing to scalars, but using points (i.e. pubkeys)
+    // as the commitments (i.e. pedersen commitments with zero randomness) at
+    // the leaf level.
+    let mut privkey_parity_flip: bool = false;
+    let leaf_commitments = get_leaf_commitments::<F, P0>(
+        &(pubkey_file_path.to_string() + ".p"));
+    // derive the index where our pubkey is in the list.
+    // but: since it will have been permissible-ized, we need to rederive the permissible
+    // version here, purely for searching:
+
+    // as well as the randomness in the blinded commitment, we also need to use the same
+    // blinding base:
+    let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
+    let mut our_pubkey_permiss1: Affine<P0> = our_pubkey;
+    while !sr_params.even_parameters.uh.is_permissible(our_pubkey_permiss1) {
+        our_pubkey_permiss1 = (our_pubkey_permiss1 + b_blinding).into();
+    }
+    let mut our_pubkey_permiss2: Affine<P0> = -our_pubkey;
+    while !sr_params.even_parameters.uh.is_permissible(our_pubkey_permiss2) {
+        our_pubkey_permiss2 = (our_pubkey_permiss2 + b_blinding).into();
+    }
+    let mut key_index: i32; // we're guaranteed to overwrite or panic but the compiler insists.
+    // the reason for 2 rounds of search is that BIP340 can output a different parity
+    // compared to ark-ec 's compression algo.
+    key_index = match leaf_commitments.iter().position(|&x| x  == our_pubkey_permiss1) {
+        None => -1,
+        Some(ks) => ks.try_into().unwrap()
+    };
+    if key_index == -1 {
+        key_index = match leaf_commitments.iter().position(|&x| x == our_pubkey_permiss2) {
+            None => {return Err("provided pubkey not found in the set".into());},
+            Some(ks) => {
+                privkey_parity_flip = true;
+                ks.try_into().unwrap()
+            }
+        }
+    };
+
+    // Now we know we have a key that's in the set, we can construct the curve
+    // tree from the set, and then the proof using its private key:
+    let beforect = Instant::now();
+    let (curve_tree, _) = get_curve_tree::<F, P0, P1>(
+        leaf_commitments.clone(), depth, &sr_params);
+    println!("Elapsed time for curve tree construction: {:.2?}", beforect.elapsed());
+    assert_eq!(curve_tree.height(), depth);
+
+    let (path_commitments, rand_scalar) =
+    curve_tree.select_and_rerandomize_prover_gadget(
+        key_index.try_into().unwrap(),
+        &mut p0_prover,
+        &mut p1_prover,
+        &sr_params,
+        &mut rng,
+    );
+    // The randomness for the PedDLEQ proof will have to be the randomness
+    // used in the curve tree randomization, *plus* the randomness that was used
+    // to convert P to a permissible point, upon initial insertion into the tree.
+    let mut r_offset: P0::ScalarField = P0::ScalarField::zero();
+    let lcindex: usize = key_index.try_into().unwrap();
+    let mut p_prime: Affine<P0> = leaf_commitments[lcindex];
+    // TODO: this is basically repeating what's already done in
+    // sr_params creation, but I don't know how else to extract the number
+    // of H bumps that were done (and we need to, see previous comment).
+    while !sr_params.even_parameters.uh.is_permissible(p_prime) {
+        p_prime = (p_prime + b_blinding).into();
+        r_offset += P0::ScalarField::one();
+    }
+    // print the root of the curve tree.
+    // TODO: how to allow the return value to be either
+    // Affine<P0> or Affine<P1>? And as a consequence,
+    // to let the code be correct for any depth.
+    // And/or, is there not
+    // a simpler way to extract the root of the tree
+    // (which should be just .parent_commitment, but all methods
+    // to extract this value seem to be private)
+    let newpath = curve_tree.select_and_rerandomize_verification_commitments(
+    path_commitments.clone());
+    let root_is_odd = newpath.even_commitments.len() == newpath.odd_commitments.len();
+    println!("Root is odd? {}", root_is_odd);
+    let root: Affine<P0>;
+    if !root_is_odd {
+        root = *newpath.even_commitments.first().unwrap();
+    }
+    else {
+        // derp, see above TODO
+        panic!("Wrong root parity, should be even");
+    }
+    let p0_proof = p0_prover
+        .prove(&sr_params.even_parameters.bp_gens)
+        .unwrap();
+    let p1_proof = p1_prover
+        .prove(&sr_params.odd_parameters.bp_gens)
+        .unwrap();
+    let returned_rand = rand_scalar + r_offset;
+    Ok((p0_proof, p1_proof, path_commitments,
+     returned_rand, b_blinding, root, privkey_parity_flip))
+}
+
+// Takes as input a hex list of actual BIP340 pubkeys
+// that should come from the utxo set;
+// converts each point into a permissible point
+// and then writes these points in binary format into
+// a new file with same name as keyset with .p appended.
+// TODO return an error if this can't be done.
+pub fn convert_keys<F: PrimeField,
+P0: SWCurveConfig<BaseField = F> + Copy,
+P1: SWCurveConfig<BaseField = P0::ScalarField,
+ScalarField = P0::BaseField> + Copy,>(keyset: String, generators_length_log_2: u8) -> Result<(), Box<dyn Error>>{
+    let raw_pubkeys = get_pubkey_leaves_hex::<F, P0>(&keyset);
+    let mut rng = rand::thread_rng();
+    let generators_length = 1 << generators_length_log_2;
+
+    let sr_params =
+        SelRerandParameters::<P0, P1>::new(generators_length,
+            generators_length, &mut rng);
+    let (permissible_points, _pr)
+     = create_permissible_points_and_randomnesses(
+        &raw_pubkeys, &sr_params);
+    // take vec permissible points and write it in binary as n*33 bytes
+    let mut buf: Vec<u8> = Vec::with_capacity(permissible_points.len()*33);
+    let _: Vec<_> = permissible_points
+        .iter()
+        .map(|pt: &Affine<P0>| {
+            pt.serialize_compressed(&mut buf).expect("Failed to serialize point")
+        }).collect();
+    let output_file = keyset.clone() + ".p";
+    write_file_string(&output_file, buf);
+    Ok(())
 }

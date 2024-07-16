@@ -5,7 +5,8 @@ pub mod utils;
 pub mod autctverifier;
 pub mod config;
 pub mod keyimagestore;
-
+pub mod rpcclient;
+pub mod rpcserver;
 extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
@@ -28,12 +29,270 @@ use std::io::Cursor;
 use std::time::Instant;
 use toy_rpc::macros::export_impl;
 
+//use autct::get_curve_tree_with_proof;
+use base64::prelude::*;
+
+use bitcoin::key::{Secp256k1, TapTweak, UntweakedKeypair};
+
+use alloc::vec::Vec;
+use ark_ec::{AffineRepr, short_weierstrass::SWCurveConfig, CurveGroup};
+use ark_secp256k1::Fq as SecpBase;
+use std::ops::{Mul, Add};
+use bitcoin::PrivateKey;
+
 pub mod rpc {
+
+    use crate::config::get_params_from_config_string;
 
     use super::*;
     use std::sync::{Arc, Mutex};
     use relations::curve_tree::{CurveTree, SelRerandParameters};
 
+    #[derive(Clone)]
+    pub struct RPCProverVerifierArgs {
+                pub keyset_file_locs: Vec<String>,
+                pub context_labels: Vec<String>,
+                pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
+                pub curve_trees: Vec<CurveTree<SecpConfig, SecqConfig>>,
+                pub G: Affine<SecpConfig>,
+                pub H: Affine<SecpConfig>,
+                pub Js: Vec<Affine<SecpConfig>>,
+                pub ks: Vec<Arc<Mutex<keyimagestore::KeyImageStore<Affine<SecpConfig>>>>>,
+            }
+
+            #[derive(Serialize, Deserialize)]
+            pub struct RPCProverRequest {
+                pub keyset: String,
+                pub depth: i32,
+                pub generators_length_log_2: u8,
+                pub user_label: String,
+                pub key_credential: String,
+                pub bc_network: String, // this is needed for parsing private keys
+            }
+        
+            #[derive(Debug, Serialize, Deserialize)]
+            pub struct RPCProverResponse {
+                    pub keyset: Option<String>,
+                    pub user_label: Option<String>,
+                    pub context_label: Option<String>,
+                    pub proof: Option<String>,
+                    pub key_image: Option<String>,
+                    pub accepted: i32,
+            }
+        
+            pub struct RPCProver{
+                pub prover_verifier_args:  RPCProverVerifierArgs,
+            }
+
+            #[export_impl]
+            impl RPCProver {
+                #[export_method]
+                pub async fn prove(&self, args: RPCProverRequest) -> Result<RPCProverResponse, String>{
+                    let pva = &self.prover_verifier_args;
+                    let mut resp: RPCProverResponse = RPCProverResponse{
+                        keyset: None, // note that this needs to be parsed out
+                        user_label: Some(args.user_label.clone()),
+                        context_label: None, // as above for keyset
+                        proof: None,
+                        key_image: None,
+                        accepted: -1
+                    };
+                    // parse out the single (context label, keyset pair) provided
+                    // by the caller's request, and then check that they are included
+                    // in the list supported by this server.
+                    let (mut cls, mut kss) = get_params_from_config_string(args.keyset).unwrap();
+                    if kss.len() != 1 || cls.len() != 1 {
+                        resp.accepted = -2;
+                        return Ok(resp);
+                    }
+                    let keyset = kss.pop().unwrap();
+                    let context_label = cls.pop().unwrap();
+                    if !(pva.context_labels.contains(&context_label)) {
+                        resp.accepted = -3;
+                        return Ok(resp);
+                    }
+                    if !(pva.keyset_file_locs.contains(&keyset)){
+                        resp.accepted = -4;
+                        return Ok(resp);
+                    }
+                    type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
+                    let nw = match args.bc_network.clone().as_str() {
+                        "mainnet" => bitcoin::Network::Bitcoin,
+                        "signet" => bitcoin::Network::Signet,
+                        "regtest" => bitcoin::Network::Regtest,
+                    _ => {resp.accepted = -5;
+                          return Ok(resp);},
+                    };
+                    let secp = Secp256k1::new();
+                    // read privkey from file; we prioritize WIF format for compatibility
+                    // with external wallets, but if that fails, we attempt to read it
+                    // as raw hex:
+                    let privkey_file_str = args.key_credential.clone();
+                    let privwifres = read_file_string(&privkey_file_str);
+                    if privwifres.is_err(){
+                        resp.accepted = -6;
+                        return Ok(resp);
+                    }
+                    let privwif = privwifres.unwrap();
+
+                    // Because sparrow (and, kinda, Core) expect usage of non-raw p2tr,
+                    // it means we're forced to use the default tweaking algo here, even
+                    // though it majorly screws up the flow (as we want to use ark's Affine<>
+                    // objects for the curve points here).
+                    // 1. First convert the hex equivalent of the WIF into a byte slice (
+                    // note that this is a big endian encoding still).
+                    // 2. Then call PrivateKey.from_slice to deserialize into a PrivateKey.
+                    // 3. use the privkey.public_key(&secp).inner.tap_tweak function
+                    //    to get a tweaked pubkey.
+                    // 3. Then serialize that as a string, deserialize it back out to Affine<Config>
+
+                    let privkeyres1 = PrivateKey::from_wif(privwif.as_str());
+                    let privkey: PrivateKey;
+                    if privkeyres1.is_err(){
+                        let privkeyres2 = PrivateKey::from_slice(
+                            &hex::decode(privwif).unwrap(),
+                        nw);
+                        if privkeyres2.is_err(){
+                            //panic!("Failed to read the private key as either WIF or hex format!");
+                            resp.accepted = -7;
+                            return Ok(resp);
+                        }
+                        privkey = privkeyres2.unwrap();
+                    }
+                    else {
+                        privkey = privkeyres1.unwrap();
+                    }
+                    let untweaked_key_pair: UntweakedKeypair = UntweakedKeypair::from_secret_key(
+                        &secp, &privkey.inner);
+                    let tweaked_key_pair = untweaked_key_pair.tap_tweak(&secp, None);
+                    let privkey_bytes = tweaked_key_pair.to_inner().secret_bytes();
+                    let privhex = hex::encode(&privkey_bytes);
+
+                    let mut x = decode_hex_le_to_F::<F>(&privhex);
+                    let G = SecpConfig::GENERATOR;
+                    let mut P = G.mul(x).into_affine();
+                    print_affine_compressed(P, "request pubkey");
+                    let gctwptime = Instant::now();
+                    let (p0proof,
+                        p1proof,
+                        path,
+                        r,
+                        H,
+                        root,
+                        privkey_parity_flip) = match get_curve_tree_with_proof::<
+                    SecpBase,
+                    SecpConfig,
+                    SecqConfig>(
+                            args.depth.try_into().unwrap(),
+                            args.generators_length_log_2.try_into().unwrap(),
+                            &keyset, P) {
+                                Err(_) => {resp.accepted = -8;
+                                    return Ok(resp);}
+                                Ok((p0proof,
+                                    p1proof,
+                                    path,
+                                r,
+                                H,
+                                root,
+                                privkey_parity_flip)) => (p0proof,
+                                    p1proof,
+                                    path,
+                                r,
+                                H,
+                                root,
+                                privkey_parity_flip),
+                            };
+
+                    println!("Elapsed time for get curve tree with proof: {:.2?}", gctwptime.elapsed());
+                    // if we could only find our pubkey in the list by flipping
+                    // the sign of our private key (this is because the BIP340 compression
+                    // logic is different from that in ark-ec; a TODO is to remove this
+                    // confusion by having the BIP340 logic in this code):
+                    if privkey_parity_flip {
+                        x = -x;
+                        P = -P;
+                    }
+                    print_affine_compressed(P, "P after flipping");
+                    // next steps create the Pedersen DLEQ proof for this key:
+                    //
+                    let J = get_generators::<SecpBase, SecpConfig>(context_label.as_bytes());
+                    print_affine_compressed(J, "J");
+                    // blinding factor for Pedersen
+                    // the Pedersen commitment D is xG + rH
+                    let rH = H.mul(r).into_affine();
+                    let D = P.add(rH).into_affine();
+                    // the key image (E) is xJ
+                    let E = J.mul(x).into_affine();
+                    let mut transcript = Transcript::new(APP_DOMAIN_LABEL);
+                    let proof = PedDleqProof::create(
+                            &mut transcript,
+                            &D,
+                            &E,
+                            &x,
+                            &r,
+                            &G,
+                            &H,
+                            &J,
+                            None,
+                            None,
+                            context_label.as_bytes(),
+                            args.user_label.as_bytes()
+                    );
+                    let mut buf = Vec::with_capacity(proof.serialized_size(Compress::Yes));
+                    proof.serialize_compressed(&mut buf).unwrap();
+
+                        let mut verifier = Transcript::new(APP_DOMAIN_LABEL);
+                        assert!(proof
+                            .verify(
+                                &mut verifier,
+                                &D,
+                                &E,
+                                &G,
+                                &H,
+                                &J,
+                                context_label.as_bytes(),
+                                args.user_label.as_bytes()
+                            )
+                            .is_ok());
+                        print_affine_compressed(D, "D");
+                        print_affine_compressed(E, "E");
+                    let total_size =
+                    33 + 33 + // D and E points (compressed)
+                    proof.serialized_size(Compress::Yes) + 
+                    p0proof.serialized_size(Compress::Yes) + 
+                    p1proof.serialized_size(Compress::Yes) +
+                    path.serialized_size(Compress::Yes);
+                    let mut buf2 = Vec::with_capacity(total_size);
+                    D.serialize_compressed(&mut buf2).unwrap();
+                    E.serialize_compressed(&mut buf2).unwrap();
+                    proof.serialize_with_mode(&mut buf2, Compress::Yes).unwrap();
+                    p0proof.serialize_compressed(&mut buf2).unwrap();
+                    p1proof.serialize_compressed(&mut buf2).unwrap();
+                    path.serialize_compressed(&mut buf2).unwrap();
+                    root.serialize_compressed(&mut buf2).unwrap();
+                    // base64 output as an option no longer makes sense:
+                    //if autctcfg.base64_proof.unwrap() {
+                    let encoded = BASE64_STANDARD.encode(buf2);
+                    //    println!("Proof generated successfully:\n{}", encoded);
+                    //    return Ok(());
+                    //write_file_string(&autctcfg.proof_file_str.clone().unwrap(), buf2);
+                    //println!("Proof generated successfully and written to {}. Size was {}",
+                    //&autctcfg.proof_file_str.unwrap(), total_size);
+                    print_affine_compressed(root, "root");
+                    let mut e = Vec::new();
+                    E.serialize_compressed(&mut e).expect("Failed to serialize point");
+                    let resp: RPCProverResponse = RPCProverResponse{
+                        keyset: Some(keyset),
+                        user_label: Some(args.user_label),
+                        context_label: Some(context_label),
+                        proof: Some(encoded),
+                        key_image: Some(hex::encode(&e)),
+                        accepted: 0,
+                    };
+                    Ok(resp)
+                }
+            }
+        
     #[derive(Serialize, Deserialize)]
     pub struct RPCProofVerifyRequest {
         pub keyset: String,
@@ -66,19 +325,11 @@ pub mod rpc {
     // should be able to decide the business logic of that based on the
     // context label given in the Request object.
     pub struct RPCProofVerifier{
-        pub keyset_file_locs: Vec<String>,
-        pub context_labels: Vec<String>,
-        pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
-        pub curve_trees: Vec<CurveTree<SecpConfig, SecqConfig>>,
-        pub G: Affine<SecpConfig>,
-        pub H: Affine<SecpConfig>,
-        pub Js: Vec<Affine<SecpConfig>>,
-        pub ks: Vec<Arc<Mutex<keyimagestore::KeyImageStore<Affine<SecpConfig>>>>>,
+        pub prover_verifier_args: RPCProverVerifierArgs,
     }
     #[export_impl]
     impl RPCProofVerifier {
 
-        // currently the only request in the API:
         // the two arguments are:
         // a String containing the name of the file containing the pubkeys
         // a bytestring (Vec<u8>) containing the serialized proof of ownership
@@ -109,7 +360,7 @@ pub mod rpc {
                 key_image: None,
             };
 
-            if !(self.context_labels.contains(&verif_request.context_label)) {
+            if !(self.prover_verifier_args.context_labels.contains(&verif_request.context_label)) {
                 resp.accepted = -4;
                 return Ok(resp);
             }
@@ -120,7 +371,7 @@ pub mod rpc {
             // (TODO can fold in above existence check to this call;
             // but for now, this is guaranteed to succeed because of
             // that check.)
-            let idx = self.context_labels.iter().position(
+            let idx = self.prover_verifier_args.context_labels.iter().position(
                 |x| x == &verif_request.context_label).unwrap();
             let mut cursor = Cursor::new(verif_request.proof);
             // deserialize the components of the PedDLEQ proof first and verify it:
@@ -136,9 +387,9 @@ pub mod rpc {
                 &mut transcript,
                 &D,
                 &E,
-                &self.G,
-                &self.H,
-                &self.Js[idx],
+                &self.prover_verifier_args.G,
+                &self.prover_verifier_args.H,
+                &self.prover_verifier_args.Js[idx],
                 verif_request.context_label.as_bytes(),
                 verif_request.user_label.as_bytes()
             );
@@ -153,7 +404,7 @@ pub mod rpc {
                         return Ok(resp);
                     }
             // check early if the now-verified key image (E) is a reuse-attempt:
-            if self.ks[idx].lock().unwrap().is_key_in_store(E) {
+            if self.prover_verifier_args.ks[idx].lock().unwrap().is_key_in_store(E) {
                 println!("Reuse of key image disallowed: ");
                 print_affine_compressed(E, "Key image value");
                 resp.accepted = -3;
@@ -161,7 +412,7 @@ pub mod rpc {
                 return Ok(resp);
             }
             // if it isn't, then it counts as used now:
-            self.ks[idx].lock().unwrap().add_key(E).expect("Failed to add keyimage to store.");
+            self.prover_verifier_args.ks[idx].lock().unwrap().add_key(E).expect("Failed to add keyimage to store.");
             // Next, we deserialize and validate the curve tree proof.
             // TODO replace these `expect()` calls; we need to return
             // an 'invalid proof format' error if they send us junk, not crash!
@@ -180,8 +431,8 @@ pub mod rpc {
                     &mut cursor).expect("Failed to deserialize root");
             let timer1 = Instant::now();
             let claimed_D = verify_curve_tree_proof(
-                path.clone(), &self.sr_params, 
-                &self.curve_trees[idx],
+                path.clone(), &self.prover_verifier_args.sr_params, 
+                &self.prover_verifier_args.curve_trees[idx],
                 p0proof, p1proof, prover_root);
             let claimed_D_result = match claimed_D {
                 Ok(x) => x,

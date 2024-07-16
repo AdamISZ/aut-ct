@@ -14,8 +14,8 @@ edition = "2021"
 
 [dependencies]
 rand = { version = "0.8", default-features = false }
-bulletproofs = { git = "https://github.com/AdamISZ/curve-trees", rev = "d76bd2837d4556b1d451055e4c381e5cb5abd00c" }
-relations = { git = "https://github.com/AdamISZ/curve-trees", rev = "d76bd2837d4556b1d451055e4c381e5cb5abd00c" }
+bulletproofs = { git = "https://github.com/AdamISZ/curve-trees", rev = "7268c22944595e2cfe52de623d33ece6f4882e5f" }
+relations = { git = "https://github.com/AdamISZ/curve-trees", rev = "7268c22944595e2cfe52de623d33ece6f4882e5f" }
 ark-ff = { version = "0.4.0"}
 ark-ec = { version = "0.4.0"}
 ark-serialize = { version = "0.4.0" } 

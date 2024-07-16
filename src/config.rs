@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use clap::{Parser, CommandFactory, Command};
 
 // This handles config items with syntax: "a:b, c:d,.."
-fn get_params_from_config_string(params: String) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
+pub fn get_params_from_config_string(params: String) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
     let pairs: Vec<String> = params.split(",").map(|s| s.to_string()).collect();
     let mut kss: Vec<String> = vec![];
     let mut cls: Vec<String> = vec![];
@@ -46,7 +46,7 @@ https://stackoverflow.com/a/75981247
 #[clap(version, about="Anonymous Usage Tokens from Curve Trees")]
 pub struct AutctConfig {
     /// `mode` is one of: "newkeys", "prove",
-    /// "serve", "convertkeys" or "request"
+    /// "serve" or "verify"
     #[arg(short('M'), long, required=false)]
     #[clap(verbatim_doc_comment)]
     pub mode: Option<String>,

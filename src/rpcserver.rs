@@ -2,24 +2,25 @@
 
 use ark_serialize::{ CanonicalDeserialize, 
     Compress, Validate};
-use autct::utils::{get_curve_tree, get_leaf_commitments, APP_DOMAIN_LABEL};
+use crate::rpc::RPCProverVerifierArgs;
+use crate::utils::{get_curve_tree, get_leaf_commitments, convert_keys, APP_DOMAIN_LABEL};
 use tokio::{task, net::TcpListener};
 use std::fs;
+use std::error::Error;
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use toy_rpc::Server;
 use std::iter::zip;
 
-use autct::{rpc::RPCProofVerifier, utils};
-use autct::config::AutctConfig;
-use autct::keyimagestore::{KeyImageStore, create_new_store};
+use crate::{rpc::RPCProofVerifier, rpc::RPCProver, utils};
+use crate::config::AutctConfig;
+use crate::keyimagestore::{KeyImageStore, create_new_store};
 use relations::curve_tree::{SelRerandParameters, CurveTree};
 use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
 use ark_secq256k1::Config as SecqConfig;
 use ark_ec::short_weierstrass::{Affine, SWCurveConfig};
-use utils::CustomError;
 
-pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), CustomError>{
+pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let (context_labels, keyset_file_locs) = autctcfg
     .clone().get_context_labels_and_keysets().unwrap();
     let rpc_port = autctcfg.rpc_port.unwrap();
@@ -35,7 +36,16 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), CustomError>{
     let mut Js: Vec<Affine<SecpConfig>> = vec![];
     let mut kss: Vec<Arc<Mutex<KeyImageStore<Affine<SecpConfig>>>>> = vec![];
     for (fl, cl) in zip(keyset_file_locs.iter(), context_labels.iter()) {
+        // this part is what consumes time, so we do it upfront on startup of the rpc server,
+        // for every keyset that we are serving.
+        // also note that for now there are no errors returned by convert_keys hence unwrap()
+        // TODO add info to interface so user knows why the startup is hanging
+        convert_keys::<SecpBase,
+        SecpConfig,
+        SecqConfig>(fl.to_string(), autctcfg.generators_length_log_2.unwrap()).unwrap();
         let leaf_commitments = get_leaf_commitments(&(fl.to_string() + ".p"));
+
+        // Actually creating the curve tree is much less time consuming (a few seconds for most trees)
         let (curve_tree2, _) = get_curve_tree::
         <SecpBase, SecpConfig, SecqConfig>(
         leaf_commitments,
@@ -70,19 +80,27 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), CustomError>{
     let G = SecpConfig::GENERATOR;
     //let J = utils::get_generators(autctcfg.context_label.as_ref().unwrap().as_bytes());
     let H = sr_params.even_parameters.pc_gens.B_blinding.clone();
+    let prover_verifier_args = RPCProverVerifierArgs {
+        sr_params,
+        keyset_file_locs,
+        context_labels,
+        curve_trees,
+        G,
+        H,
+        Js,
+        ks: kss
+    };
     let verifier_service = Arc::new(
         RPCProofVerifier{
-            sr_params,
-            keyset_file_locs,
-            context_labels,
-            curve_trees,
-            G,
-            H,
-            Js,
-            ks: kss}
+            prover_verifier_args: prover_verifier_args.clone()}
+    );
+    let prover_service = Arc::new(
+        RPCProver{
+            prover_verifier_args}
     );
     let server = Server::builder()
         .register(verifier_service) // register service
+        .register(prover_service)
         .build();
     let listener = TcpListener::bind(&addr).await.unwrap();
 
