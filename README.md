@@ -73,18 +73,9 @@ Build the project with `cargo build --release` (without release flag, the debug 
 
 Start with `target/release/autct --help` for the summary of the syntax. Note that two flags are required (TODO: they should be arguments), namely `-M` for the mode and `-k` for the keyset.
 
-Taking each of the five `mode`s in turn:
+Taking each of the four `mode`s in turn:
 
-"prove" and "convertkeys":
-
-```
-target/release/autct -M convertkeys --keysets \
-my-context:testdata/autct-203015-500000-0-2-1024.aks \
-```
-
-This takes a given keyset file and converts it into a form that allows the prover to run faster. The converted keyset file will end in `.aks.p` and be in the same location as the original. The keyset file is explained more below.
-
-Once you have this `.aks.p` file, you can do the `prove` operation:
+"prove":
 
 ```
 target/release/autct -M prove --keysets \
@@ -94,11 +85,11 @@ my-context:testdata/autct-203015-500000-0-2-1024.aks \
 
 Note that the private key is read in as WIF format from the file specified with `-i`, which by default is a local directory file called `privkey`.
 
-Note that the `keysets` (or `-k`) option takes a particular format: `contextlabel:filename`, and that this can (as we will see below) be a comma-separated list. The idea here is that usage tokens' scarcity depends on context; you can use the same utxo twice in *different* contexts (like, different applications) but only once in the same context.
+Note that the `keysets` (or `-k`) option takes a particular format: `contextlabel:filename`, and that this can (as we will see below) be a comma-separated list for other operations, but for proving just use one. The idea here is that usage tokens' scarcity depends on context; you can use the same utxo twice in *different* contexts (like, different applications) but only once in the same context.
 
-The file `autct-203015-500000-0-2-1024.aks`, or whatever else is specified (see [here](./docs/protocol-utxo.md) Appendix 1 for filename structure), should contain public keys in format: compressed, hex encoded, separated by whitespace, all on one line. The `.aks.p` file after conversion is binary format and contains the "permissible point" corresponding to each pubkey (see the Curve Tree paper for details).
+The file `autct-203015-500000-0-2-1024.aks`, or whatever else is specified (see [here](./docs/protocol-utxo.md) Appendix 1 for filename structure), should contain public keys in format: compressed, hex encoded, separated by whitespace, all on one line.
 
-The output of the proving algorithm is sent to the file specified by `-P`, which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file (the `.aks.p` file), in order to identify the correct index to use in the proof.
+The output of the proving algorithm is sent to the file specified by `-P`, which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file, in order to identify the correct index to use in the proof.
 
 "serve":
 
@@ -107,11 +98,11 @@ target/release/autct -M serve --keysets \
 my-context:testdata/autct-203015-500000-0-2-1024.aks,my-other-context:some-other-filepath
 ```
 
-As probably obvious, the idea here is that we run a service (somewhere) for a client to be able to throw serialized proofs at, and ask it to verify (quickly!) if the proof and the corresponding key image actually validate against the curve tree. If so, the user can credit whoever provided this proof, with some kind of token, service access, whatever, and also the code keep track of what key images have already been used in a flat file persistent storage (see config option `keyimage_filename_suffix`). Here "quickly" should be in the 50-100ms range, for even up to millions of pubkeys. The RPC server takes some seconds to start (loading precomputation tables and constructing the Curve Tree), and then serves on port as specified with `-p` at host specified with `-H` (default 127.0.0.1:23333).
+As probably obvious, the idea here is that we run an RPC server (somewhere) for a client to be able to make proof requests, or give serialized proofs to to make verification requests, i.e. if the proof and the corresponding key image actually validate against the curve tree specified. If so, the user can credit whoever provided this proof, with some kind of token, service access, whatever, and also the code keep track of what key images have already been used in a flat file persistent storage (see config option `keyimage_filename_suffix`). Here "quickly" should be in the 50-100ms range, for even up to millions of pubkeys. The RPC server will often takes some considerable time to start up (1-2 minutes e.g.) (loading precomputation tables and constructing the Curve Tree), and then serves on port as specified with `-p` at host specified with `-H` (default 127.0.0.1:23333).
 
-Additionally, as noted above, a server can serve the verification function for multiple different contexts simultaneously, by extending the comma-separated list as shown. Each item in the list must have a different context label, and the keyset files for each can be the same or different, as desired.
+Additionally, as noted above, a server can serve the proving and verification function for multiple different contexts simultaneously, by extending the comma-separated list as shown above. Each item in the list must have a different context label, and the keyset files for each can be the same or different, as desired.
 
-"request":
+"verify":
 
 ```
 target/release/autct -M request --keysets \
@@ -158,36 +149,34 @@ echo cRczLRUHjDTEM92wagj3mMRvP69Jz3SEHQc8pFKiszFBPpJo8dVD > privkey
 
 The above private key corresponds to an existing signet utxo with more than 500k sats in it. Please don't spend it!
 
-First, convert the keyset given in the repository's `testdata` folder:
-
-```
-target/release/autct -M convertkeys --keysets my-context:testdata/autct-203015-500000-0-2-1024.aks
-```
-
-... this preparatory step need only be done once for any given keyset, but can take well over a minute for large keysets.
-
-Then compute the proof:
-
-```
-target/release/autct -M prove --keysets my-context:testdata/autct-203015-500000-0-2-1024.aks -n signet -i privkey
-```
-
-In a different terminal, but still in repository root, start the server-verifier:
+First, start the RPC server:
 
 ```
 target/release/autct -M serve --keysets \
 my-context:testdata/autct-203015-500000-0-2-1024.aks -n signet
 ```
 
-Go back to the original terminal, and make a request from the rpc client,
-to verify the proof and deliver a resource:
+.. as noted above, it may take a minute to start up. Once you see `Starting server at 127.0.0.1:23333`, it is ready.
+
+Then switch to a new terminal. Request computation of the proof:
+
+```
+target/release/autct -M prove --keysets my-context:testdata/autct-203015-500000-0-2-1024.aks \
+-n signet -i privkey -P default-proof-file
+```
+
+This will likely take around 15 seconds, at the end you should see `Proof generated successfully` and the file `default-proof-file` will contain it.
+
+If you check the other terminal you will see some debug output as the proof was created.
+
+Next make a request to verify the proof and deliver a resource:
 
 ```
 target/release/autct -M request -P default-proof-file -k \
 my-context:testdata/autct-203015-500000-0-2-1024.aks
 ```
 
-Ouput log in server-verifier's terminal should look similar to this:
+Ouput log in servers terminal should look similar to this:
 
 ```
 Elapsed time for selrerand paramater generation: 58.00ns
