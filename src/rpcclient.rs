@@ -40,6 +40,29 @@ pub async fn verify(autctcfg: AutctConfig) -> Result<RPCProofVerifyResponse, Box
     Ok(result)
 }
 
+pub async fn createkeys(autctcfg: AutctConfig) -> Result<RPCCreateKeysResponse, Box<dyn Error>> {
+    let rpc_port = autctcfg.rpc_port;
+    let host: &str= &autctcfg.rpc_host.clone().unwrap();
+    let port_str: &str = &rpc_port.unwrap().to_string();
+    let addr: String = format!("{}:{}", host, port_str);
+    let req: RPCCreateKeysRequest = RPCCreateKeysRequest {
+        bc_network: autctcfg.bc_network.unwrap(),
+        privkey_file_loc: autctcfg.privkey_file_str.unwrap()
+    };
+    let mut client = Client::dial(&addr).await.unwrap();
+    client.set_default_timeout(std::time::Duration::from_secs(3));
+    let result = client
+    .r_p_c_create_keys().createkeys(req)
+    .await;
+    match result {
+        Ok(x) => return Ok(x),
+        Err(x) => {
+            println!("Error in rpc client prove call: {}", &x);
+            return Err(x.into());
+        }
+    }
+}
+
 pub async fn prove(autctcfg: AutctConfig) -> Result<RPCProverResponse, Box<dyn Error>>{
     let rpc_port = autctcfg.rpc_port;
     let host: &str= &autctcfg.rpc_host.clone().unwrap();

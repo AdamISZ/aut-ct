@@ -6,8 +6,6 @@ extern crate ark_secp256k1;
 use autct::rpcclient;
 use autct::rpcserver;
 use autct::config::AutctConfig;
-use bitcoin::{Address, PrivateKey, XOnlyPublicKey};
-use bitcoin::key::Secp256k1;
 
 
 use std::error::Error;
@@ -22,38 +20,34 @@ async fn main() -> Result<(), Box<dyn Error>>{
         "verify" => {return request_verify(autctcfg).await},
         "serve" => {return rpcserver::do_serve(autctcfg).await
                     },
-        "newkeys" => {return create_keys(autctcfg).await},
+        "newkeys" => {return request_create_keys(autctcfg).await},
         _ => {return Err("Invalid mode, must be 'prove', 'serve', 'newkeys' or 'verify'".into())},
 
     }
 }
 
-async fn create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
-
-    let nw = match autctcfg.bc_network.unwrap().as_str() {
-        "mainnet" => bitcoin::Network::Bitcoin,
-        "signet" => bitcoin::Network::Signet,
-        "regtest" => bitcoin::Network::Regtest,
-       _ => return Err("Invalid bitcoin network string in config.".into()),
+async fn request_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
+    let res = rpcclient::createkeys(autctcfg).await;
+    match res {
+        Ok(rest) => {
+        // codes defined in lib.rs
+            match rest.accepted {
+                0 => {println!("New key and address generated successfully");
+                println!("This is the address to pay into: {}", rest.address.unwrap());
+                println!("The corresponding private key is written in WIF format to: {}", rest.privkey_file_loc.unwrap());
+                println!("The WIF string can be imported into e.g. Sparrow, Core to sweep or access the funds in it.");
+            },
+                -1 => println!("Undefined failure in key generation."),
+                -2 => println!("New key request rejected, mismatch in bitcoin network."),
+                -3 => println!("New key request rejected, could not write private key to specified file location."),
+                _ => println!("Unrecognized error code from server?"),
+            }
+        },
+        Err(_) => return Err("Proving request processing failed.".into()),
     };
-
-    // This uses the `rand-std` feature in the rust-bitcoin crate to generate
-    // the random number via libsecp256k1 in the recommended secure way:
-    let privkey = PrivateKey::generate(nw);
-    let secp = Secp256k1::new();
-    // this is the standard way to generate plain-vanilla taproot addresses:
-    // it is not "raw" (rawtr in descriptors) but it applies a merkle root of
-    // null as the tweak to the internal pubkey. This is what e.g. Sparrow is
-    // looking for as "p2tr" type.
-    let addr = Address::p2tr(&secp,
-         XOnlyPublicKey::from(privkey.public_key(&secp).inner),
-          None, privkey.network);
-    println!("This is the address to pay into: {}", addr);
-    // print this to the file configured in --privkey file, but error/warn if already exists
-    println!("This is the private key in WIF format: {}", privkey);
-    println!("The WIF string above can be imported into e.g. Sparrow, Core to sweep or access the funds in it.");
     Ok(())
 }
+
 async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
     let res = rpcclient::verify(autctcfg).await;
     match res {
