@@ -71,9 +71,32 @@ sudo apt install build-essential
 
 Build the project with `cargo build --release` (without release flag, the debug version is very slow), then the executable is at `target/release/autct`.
 
-Start with `target/release/autct --help` for the summary of the syntax. Note that two flags are required (TODO: they should be arguments), namely `-M` for the mode and `-k` for the keyset.
+Start with `target/release/autct --help` for the summary of the syntax. Note that two flags are required (TODO: they should be arguments), namely `-M` for the mode/method and `-k` for the keyset.
 
 Taking each of the four `mode`s in turn:
+
+"serve":
+
+```
+target/release/autct -M serve --keysets \
+my-context:testdata/autct-203015-500000-0-2-1024.aks,my-other-context:some-other-filepath -n signet
+```
+
+The application's architecture is based around the idea of a (potentially always-on) daemon acting as an RPC server, for clients to request actions from. This allows easier usage by external applications written in different environments/languages etc., and means that such clients do **not** need to have implemented any of the custom cryptographic operations.
+
+Currently the application supports three specific distinct RPC requests, represented by the modes `prove`, `verify` and `newkeys`.
+
+The RPC server will often takes some considerable time to start up (1-2 minutes e.g.) (loading precomputation tables and constructing the Curve Tree), and then serves on port as specified with `-p` at host specified with `-H` (default 127.0.0.1:23333).
+
+Additionally, a server can serve the proving and verification function for multiple different contexts simultaneously, by extending the comma-separated list as shown above. Each item in the list must have a different context label, and the keyset files for each can be the same or different, as desired.
+
+"newkeys":
+
+```
+./autct -M newkeys --keysets none -n mainnet -i privkey-file
+```
+
+If you need a new taproot address and its corresponding private key, this convenience method allows that. The private key is written in WIF format to the file specified with the `-i` flag, and can be imported into other taproot-supporting wallets; the address is the 'standard' p2tr type. The network (`-n`) should be one of `mainnet`, `signet` or `regtest`.
 
 "prove":
 
@@ -83,24 +106,15 @@ my-context:testdata/autct-203015-500000-0-2-1024.aks \
 -i privkeyfile
 ```
 
-Note that the private key is read in as WIF format from the file specified with `-i`, which by default is a local directory file called `privkey`.
+As per `newkeys` above, the private key is read in as WIF format from the file specified with `-i` (the default is a local directory file called `privkey`).
 
-Note that the `keysets` (or `-k`) option takes a particular format: `contextlabel:filename`, and that this can (as we will see below) be a comma-separated list for other operations, but for proving just use one. The idea here is that usage tokens' scarcity depends on context; you can use the same utxo twice in *different* contexts (like, different applications) but only once in the same context.
+Note that the `keysets` (or `-k`) option takes a particular format: `contextlabel:filename`, and that this can be a comma-separated list for the `serve` operation, but for proving and veryifying, you must just use one. The idea of `context-label` is that usage tokens' scarcity depends on context; you can use the same utxo twice in *different* contexts (like, different applications) but only once in the same context.
 
 The file `autct-203015-500000-0-2-1024.aks`, or whatever else is specified (see [here](./docs/protocol-utxo.md) Appendix 1 for filename structure), should contain public keys in format: compressed, hex encoded, separated by whitespace, all on one line.
 
 The output of the proving algorithm is sent to the file specified by `-P`, which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file, in order to identify the correct index to use in the proof.
 
-"serve":
-
-```
-target/release/autct -M serve --keysets \
-my-context:testdata/autct-203015-500000-0-2-1024.aks,my-other-context:some-other-filepath
-```
-
-As probably obvious, the idea here is that we run an RPC server (somewhere) for a client to be able to make proof requests, or give serialized proofs to to make verification requests, i.e. if the proof and the corresponding key image actually validate against the curve tree specified. If so, the user can credit whoever provided this proof, with some kind of token, service access, whatever, and also the code keep track of what key images have already been used in a flat file persistent storage (see config option `keyimage_filename_suffix`). Here "quickly" should be in the 50-100ms range, for even up to millions of pubkeys. The RPC server will often takes some considerable time to start up (1-2 minutes e.g.) (loading precomputation tables and constructing the Curve Tree), and then serves on port as specified with `-p` at host specified with `-H` (default 127.0.0.1:23333).
-
-Additionally, as noted above, a server can serve the proving and verification function for multiple different contexts simultaneously, by extending the comma-separated list as shown above. Each item in the list must have a different context label, and the keyset files for each can be the same or different, as desired.
+Note that in contrast to verification as specified below, proving can take a non trivial time (15 seconds for large keysets is not untypical).
 
 "verify":
 
@@ -113,16 +127,6 @@ This client connects to the above server and calls the `verify()` function with 
 
 In the directory `testdata` there is an example pubkey file containing approximately 330K pubkeys taken from all taproot utxos on signet at block 203015, which you can use to test if you like. For this pubkey set, the private key `cRczLRUHjDTEM92wagj3mMRvP69Jz3SEHQc8pFKiszFBPpJo8dVD` is for one of those pubkeys (signet!), so if you use it, the proof should verify, and the key image you get as output from the verifier should be: `2e7b894455872f3039fb734b42534be410a2a2237a08212b4c9a5bd039c6b4d080` (with the default test labels as per the worked example below).
 
-Finally, an auxiliary tool:
-
-"newkeys":
-
-```
-./autct -M newkeys --keysets none -n mainnet
-```
-
-If you need a new taproot address and its corresponding private key, this convenience method allows that. The private key is output in WIF format and can be imported into other taproot-supporting wallets; the address is the 'standard' p2tr type. The network (`-n`) should be one of `mainnet`, `signet` or `regtest`.
-
 ## Configuring
 
 Use `target/release/autct --help` for documentation of the options available; these are the same settings you can set in the config file:
@@ -131,7 +135,7 @@ The config file is auto-generated in `~/.config/autct/default-config.toml` (or s
 
 Precedence operation is as you would expect: command line options take precedence over config file values, and be aware updates (i.e. just choosing a different option in a command line call) will be persisted to that config file. Third in order of precedence is the default value. As noted, two "options" (`-M` and `-k`) are required to be specified always.
 
-The depth and branching factor are the parameters of the curve tree. The `generators_length_log_2` may be removed in future but it should be the smallest power of 2 that's bigger than `D(912+L-1)` where `D` is the depth and `L` is the branching factor. If it helps, for key sets up to 500K in size, the defaults should be fine. The rpc port can also be configured here.
+The depth and branching factor are the parameters of the curve tree. The `generators_length_log_2` may be removed in future but it should be the smallest power of 2 that's bigger than `D(912+L-1)` where `D` is the depth and `L` is the branching factor. If it helps, for keysets up to 500K in size, the defaults should be fine. The rpc port can also be configured here.
 
 Finally, one *may* need to set the `user_string` with `-u` to a hex serialized BIP340 pubkey or alternate user string (see [here](./docs/protocol-utxo.md) Appendix 2). This defines "who" can use the resources accessed by "consuming" the utxo in that context.
 
@@ -172,7 +176,7 @@ If you check the other terminal you will see some debug output as the proof was 
 Next make a request to verify the proof and deliver a resource:
 
 ```
-target/release/autct -M request -P default-proof-file -k \
+target/release/autct -M verify -P default-proof-file -k \
 my-context:testdata/autct-203015-500000-0-2-1024.aks
 ```
 
@@ -196,6 +200,14 @@ Configuration file: '/home/user/.config/autct/default-config.toml'
 	
 Request was accepted by the Autct verifier! The proof is valid and the (unknown) pubkey is unused.
 ```
+
+Note that if you repeat this test, you will get instead:
+
+```
+Request rejected, proofs are valid but key image is reused.
+```
+
+which is correct; key image was stored in the file `autct-v1.0my-contextkeyimages.aki` and reuse will not be allowed unless that file is deleted.
 
 (Process currently verified working on Ubuntu 22.04, Debian 12 and Windows 10)
 

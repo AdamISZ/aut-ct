@@ -28,8 +28,8 @@ use ark_secq256k1::Config as SecqConfig;
 use std::io::Cursor;
 use std::time::Instant;
 use toy_rpc::macros::export_impl;
+use std::io::Write;
 
-//use autct::get_curve_tree_with_proof;
 use base64::prelude::*;
 
 use bitcoin::key::{Secp256k1, TapTweak, UntweakedKeypair};
@@ -38,7 +38,7 @@ use alloc::vec::Vec;
 use ark_ec::{AffineRepr, short_weierstrass::SWCurveConfig, CurveGroup};
 use ark_secp256k1::Fq as SecpBase;
 use std::ops::{Mul, Add};
-use bitcoin::PrivateKey;
+use bitcoin::{Address, PrivateKey, XOnlyPublicKey};
 
 pub mod rpc {
 
@@ -60,6 +60,65 @@ pub mod rpc {
                 pub ks: Vec<Arc<Mutex<keyimagestore::KeyImageStore<Affine<SecpConfig>>>>>,
             }
 
+            #[derive(Serialize, Deserialize)]
+            pub struct RPCCreateKeysRequest {
+                pub bc_network: String,
+                pub privkey_file_loc: String
+            }
+
+            #[derive(Serialize, Deserialize)]
+            pub struct RPCCreateKeysResponse {
+                pub address: Option<String>, // note that for taproot, the pubkey is implicit
+                pub privkey_file_loc: Option<String>,
+                pub accepted: i32,
+            }
+
+            pub struct RPCCreateKeys {
+            }
+
+            #[export_impl]
+            impl RPCCreateKeys {
+                #[export_method]
+                pub async fn createkeys(&self, args: RPCCreateKeysRequest)
+                -> Result<RPCCreateKeysResponse, String> {
+                    let mut resp: RPCCreateKeysResponse = RPCCreateKeysResponse{
+                        address: None,
+                        privkey_file_loc: Some(args.privkey_file_loc),
+                        accepted: -1
+                    };
+                    let nw = match args.bc_network.as_str() {
+                        "mainnet" => bitcoin::Network::Bitcoin,
+                        "signet" => bitcoin::Network::Signet,
+                        "regtest" => bitcoin::Network::Regtest,
+                       _ => {resp.accepted = -2;
+                             return Ok(resp)},
+                    };
+                
+                    // This uses the `rand-std` feature in the rust-bitcoin crate to generate
+                    // the random number via libsecp256k1 in the recommended secure way:
+                    let privkey = PrivateKey::generate(nw);
+                    // persist the newly created key in WIF format to the location
+                    // requested:
+                    let mut buf = Vec::new();
+                    let res = write!(&mut buf, "{}", privkey);
+                    if !res.is_ok(){
+                        resp.accepted = -3;
+                        return Ok(resp);
+                    }
+                    write_file_string(&resp.privkey_file_loc.clone().unwrap(), buf);
+                    let secp = Secp256k1::new();
+                    // this is the standard way to generate plain-vanilla taproot addresses:
+                    // it is not "raw" (rawtr in descriptors) but it applies a merkle root of
+                    // null as the tweak to the internal pubkey. This is what e.g. Sparrow is
+                    // looking for as "p2tr" type.
+                    let addr = Address::p2tr(&secp,
+                         XOnlyPublicKey::from(privkey.public_key(&secp).inner),
+                          None, privkey.network);
+                    resp.address = Some(addr.to_string());
+                    resp.accepted = 0;
+                    Ok(resp)
+                }
+            }
             #[derive(Serialize, Deserialize)]
             pub struct RPCProverRequest {
                 pub keyset: String,
