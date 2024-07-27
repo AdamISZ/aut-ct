@@ -6,10 +6,11 @@ extern crate ark_secp256k1;
 use autct::rpcclient;
 use autct::rpcserver;
 use autct::config::AutctConfig;
+use autct::utils::write_file_string;
 
 
 use std::error::Error;
-
+use base64::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>{
@@ -70,14 +71,19 @@ async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
 }
 
 async fn request_prove(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+    let required_proof_destination = autctcfg.clone().proof_file_str.unwrap();
     let res = rpcclient::prove(autctcfg).await;
     match res {
         Ok(rest) => {
         // codes defined in lib.rs
         // TODO: create some callback structure to receive the resource
             match rest.accepted {
-                // deliberately verbose message here to help testers understand:
-                0 => println!("Proof generated successfully."),
+                0 => {println!("Proof generated successfully.");
+                // receive the base64 proof and convert it to a binary file.
+                let decoded_proof = BASE64_STANDARD.decode(rest.proof.unwrap())
+                .expect("Unexpected format of proof, should be base64");
+                write_file_string(&required_proof_destination, decoded_proof);
+            },
                 -1 => println!("Undefined failure in proving."),
                 -2 => println!("Proving request rejected, must be only one context:keyset provided."),
                 -3 => println!("Proving request rejected, provided context label is not served."),
