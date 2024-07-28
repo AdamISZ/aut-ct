@@ -254,36 +254,46 @@ pub fn get_curve_tree_with_proof<
         &(pubkey_file_path.to_string() + ".p"));
     // derive the index where our pubkey is in the list.
     // but: since it will have been permissible-ized, we need to rederive the permissible
-    // version here, purely for searching:
-
-    // as well as the randomness in the blinded commitment, we also need to use the same
+    // version here, purely for searching. This is a little involved!
+    // First, as well as the randomness in the blinded commitment, we also need to use the same
     // blinding base:
     let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
+    // Second, the randomness for the PedDLEQ proof will have to be the randomness
+    // used in the curve tree randomization, *plus* the randomness that was used
+    // to convert P to a permissible point, upon initial insertion into the tree.
+    // We need to keep track of what this tweak is, in both possibilities of positive
+    // and negative of initial key:
+    let mut r_offset1: P0::ScalarField = P0::ScalarField::zero();
+    let mut r_offset2: P0::ScalarField = P0::ScalarField::zero();
+    let mut r_offset: P0::ScalarField = P0::ScalarField::zero();
     let mut our_pubkey_permiss1: Affine<P0> = our_pubkey;
     while !sr_params.even_parameters.uh.is_permissible(our_pubkey_permiss1) {
         our_pubkey_permiss1 = (our_pubkey_permiss1 + b_blinding).into();
+        r_offset1 += P0::ScalarField::one();
     }
     let mut our_pubkey_permiss2: Affine<P0> = -our_pubkey;
     while !sr_params.even_parameters.uh.is_permissible(our_pubkey_permiss2) {
         our_pubkey_permiss2 = (our_pubkey_permiss2 + b_blinding).into();
+        r_offset2 += P0::ScalarField::one();
     }
     let mut key_index: i32; // we're guaranteed to overwrite or panic but the compiler insists.
     // the reason for 2 rounds of search is that BIP340 can output a different parity
     // compared to ark-ec 's compression algo.
     key_index = match leaf_commitments.iter().position(|&x| x  == our_pubkey_permiss1) {
         None => -1,
-        Some(ks) => ks.try_into().unwrap()
+        Some(ks) => {r_offset = r_offset1;
+            ks.try_into().unwrap()}
     };
     if key_index == -1 {
         key_index = match leaf_commitments.iter().position(|&x| x == our_pubkey_permiss2) {
             None => {return Err("provided pubkey not found in the set".into());},
             Some(ks) => {
                 privkey_parity_flip = true;
+                r_offset = r_offset2;
                 ks.try_into().unwrap()
             }
         }
     };
-
     // Now we know we have a key that's in the set, we can construct the curve
     // tree from the set, and then the proof using its private key:
     let beforect = Instant::now();
@@ -300,19 +310,6 @@ pub fn get_curve_tree_with_proof<
         &sr_params,
         &mut rng,
     );
-    // The randomness for the PedDLEQ proof will have to be the randomness
-    // used in the curve tree randomization, *plus* the randomness that was used
-    // to convert P to a permissible point, upon initial insertion into the tree.
-    let mut r_offset: P0::ScalarField = P0::ScalarField::zero();
-    let lcindex: usize = key_index.try_into().unwrap();
-    let mut p_prime: Affine<P0> = leaf_commitments[lcindex];
-    // TODO: this is basically repeating what's already done in
-    // sr_params creation, but I don't know how else to extract the number
-    // of H bumps that were done (and we need to, see previous comment).
-    while !sr_params.even_parameters.uh.is_permissible(p_prime) {
-        p_prime = (p_prime + b_blinding).into();
-        r_offset += P0::ScalarField::one();
-    }
     // print the root of the curve tree.
     // TODO: how to allow the return value to be either
     // Affine<P0> or Affine<P1>? And as a consequence,
