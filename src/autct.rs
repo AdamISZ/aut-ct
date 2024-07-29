@@ -72,6 +72,7 @@ async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
 
 async fn request_prove(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let required_proof_destination = autctcfg.clone().proof_file_str.unwrap();
+    let b64chosen: bool = autctcfg.clone().base64_proof.unwrap();
     let res = rpcclient::prove(autctcfg).await;
     match res {
         Ok(rest) => {
@@ -80,9 +81,15 @@ async fn request_prove(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
             match rest.accepted {
                 0 => {println!("Proof generated successfully.");
                 // receive the base64 proof and convert it to a binary file.
-                let decoded_proof = BASE64_STANDARD.decode(rest.proof.unwrap())
+                let b64proof = rest.proof.unwrap();
+                if b64chosen {
+                    println!("Here is the proof in base64 format: {}", b64proof);
+                }
+                else {
+                let decoded_proof = BASE64_STANDARD.decode(b64proof)
                 .expect("Unexpected format of proof, should be base64");
                 write_file_string(&required_proof_destination, decoded_proof);
+                }
             },
                 -1 => println!("Undefined failure in proving."),
                 -2 => println!("Proving request rejected, must be only one context:keyset provided."),
