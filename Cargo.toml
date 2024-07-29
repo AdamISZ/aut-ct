@@ -31,7 +31,6 @@ rayon = {version = "1.5.3", optional = true}
 hex = {version ="0.4.3", features = ["serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 toy-rpc = { version = "0.8.1", features = ["tokio_runtime", "server", "client"] }
-serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 confy = "^0.5"
@@ -57,14 +56,6 @@ path = "src/autct.rs"
 default = ["asm"]
 asm = ["ark-ff/asm","bulletproofs/asm"]
 parallel = ["rayon", "ark-ec/parallel", "ark-ff/parallel", "ark-std/parallel", "bulletproofs/parallel"]
-bench_prover = []
-detailed_benchmarks = []
-usenix = ["bench_prover"]
-table1 = ["usenix"]
-table2 = ["usenix"]
-table3 = ["usenix"]
-all-tables = ["table1", "table2", "table3"]
-
 
 [profile.release]
 lto = true
