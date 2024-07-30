@@ -8,6 +8,7 @@ Anonymous usage tokens from curve trees
 * [Worked Example](#worked-example)
 * [Running](#running)
 * [Testing](#testing)
+* [Making an RPC client](#making-an-rpc-client)
 * [Keysets](#keysets)
 * [Security](#security)
 
@@ -214,6 +215,14 @@ which is correct; key image was stored in the file `autct-v1.0my-contextkeyimage
 # Testing
 
 See more info [here](./testdata/README.md).
+
+# Making an RPC client
+
+As an example for the case of Python, see [here](https://github.com/AdamISZ/autct-api).
+
+Conceptually, developers should be able to run *this* application in server mode, locally, and then their own app can make proof and verification calls quickly and without any custom and non-standard crypto code, to the RPC API provided here, consisting of the three methods `prove`, `verify` and `createkeys`. The calls are done over websockets. See the `example.py` in the src directory in that repo, for concrete examples.
+
+As long as websockets are supported, the same should be very easy to do foor other programming languages/environments.
 
 # Keysets
 
