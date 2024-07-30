@@ -109,7 +109,7 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     // Run the server in a separate task
     let handle = task::spawn(async move {
         println!("Starting server at {}", &addr);
-        server.accept(listener).await.unwrap();
+        server.accept_websocket(listener).await.unwrap();
     });
     handle.await.expect("Error running the RPC server");
     Ok(())

@@ -358,7 +358,7 @@ pub mod rpc {
         pub user_label: String,
         pub context_label: String,
         pub application_label: String,
-        pub proof: Vec<u8>,
+        pub proof: String,
     }
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -432,7 +432,9 @@ pub mod rpc {
             // that check.)
             let idx = self.prover_verifier_args.context_labels.iter().position(
                 |x| x == &verif_request.context_label).unwrap();
-            let mut cursor = Cursor::new(verif_request.proof);
+            let decoded_proof = BASE64_STANDARD.decode(verif_request.proof)
+                .expect("Unexpected format of proof, should be base64");
+            let mut cursor = Cursor::new(decoded_proof);
             // deserialize the components of the PedDLEQ proof first and verify it:
             let D = Affine::<SecpConfig>::deserialize_compressed(
                 &mut cursor).expect("Failed to deserialize D");
