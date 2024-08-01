@@ -159,13 +159,26 @@ pub mod rpc {
                     // parse out the single (context label, keyset pair) provided
                     // by the caller's request, and then check that they are included
                     // in the list supported by this server.
-                    let (mut cls, mut kss) = get_params_from_config_string(args.keyset).unwrap();
+                    let (mut cls, mut kss) = match get_params_from_config_string(args.keyset){
+                        Ok(x) => x,
+                        Err(_) => {resp.accepted = -9;
+                                   return Ok(resp)
+                                  }
+                    };
                     if kss.len() != 1 || cls.len() != 1 {
                         resp.accepted = -2;
                         return Ok(resp);
                     }
-                    let keyset = kss.pop().unwrap();
-                    let context_label = cls.pop().unwrap();
+                    let keyset = match kss.pop(){
+                        Some(x) => x,
+                        None => {resp.accepted = -9;
+                                 return Ok(resp)}
+                    };
+                    let context_label = match cls.pop(){
+                        Some(x) => x,
+                        None => {resp.accepted = -9;
+                                 return Ok(resp)}
+                    };
                     if !(pva.context_labels.contains(&context_label)) {
                         resp.accepted = -3;
                         return Ok(resp);
@@ -212,7 +225,6 @@ pub mod rpc {
                             &hex::decode(privwif).unwrap(),
                         nw);
                         if privkeyres2.is_err(){
-                            //panic!("Failed to read the private key as either WIF or hex format!");
                             resp.accepted = -7;
                             return Ok(resp);
                         }
@@ -298,9 +310,14 @@ pub mod rpc {
                             args.user_label.as_bytes()
                     );
                     let mut buf = Vec::with_capacity(proof.serialized_size(Compress::Yes));
-                    proof.serialize_compressed(&mut buf).unwrap();
+                    if proof.serialize_compressed(&mut buf).is_err(){
+                        resp.accepted = -10;
+                        return Ok(resp);
+                    };
 
                         let mut verifier = Transcript::new(APP_DOMAIN_LABEL);
+                        // here following the principle that internal logic errors
+                        // should crash:
                         assert!(proof
                             .verify(
                                 &mut verifier,
@@ -322,24 +339,42 @@ pub mod rpc {
                     p1proof.serialized_size(Compress::Yes) +
                     path.serialized_size(Compress::Yes);
                     let mut buf2 = Vec::with_capacity(total_size);
-                    D.serialize_compressed(&mut buf2).unwrap();
-                    E.serialize_compressed(&mut buf2).unwrap();
-                    proof.serialize_with_mode(&mut buf2, Compress::Yes).unwrap();
-                    p0proof.serialize_compressed(&mut buf2).unwrap();
-                    p1proof.serialize_compressed(&mut buf2).unwrap();
-                    path.serialize_compressed(&mut buf2).unwrap();
-                    root.serialize_compressed(&mut buf2).unwrap();
-                    // base64 output as an option no longer makes sense:
-                    //if autctcfg.base64_proof.unwrap() {
+                    if D.serialize_compressed(&mut buf2).is_err() {
+                        resp.accepted = -11;
+                        return Ok(resp)
+                    };
+                    if E.serialize_compressed(&mut buf2).is_err() {
+                        resp.accepted = -11;
+                        return Ok(resp)
+                    };
+                    if proof.serialize_with_mode(&mut buf2, Compress::Yes).is_err() {
+                        resp.accepted = -10;
+                        return Ok(resp)
+                    };
+                    if p0proof.serialize_compressed(&mut buf2).is_err() {
+                        resp.accepted = -12;
+                        return Ok(resp)
+                    };
+                    if p1proof.serialize_compressed(&mut buf2).is_err() {
+                        resp.accepted = -12;
+                        return Ok(resp)
+                    };
+                    if path.serialize_compressed(&mut buf2).is_err() {
+                        resp.accepted = -13;
+                        return Ok(resp)
+                    };
+                    if root.serialize_compressed(&mut buf2).is_err() {
+                        resp.accepted = -11;
+                        return Ok(resp)
+                    };
+
                     let encoded = BASE64_STANDARD.encode(buf2);
-                    //    println!("Proof generated successfully:\n{}", encoded);
-                    //    return Ok(());
-                    //write_file_string(&autctcfg.proof_file_str.clone().unwrap(), buf2);
-                    //println!("Proof generated successfully and written to {}. Size was {}",
-                    //&autctcfg.proof_file_str.unwrap(), total_size);
                     print_affine_compressed(root, "root");
                     let mut e = Vec::new();
-                    E.serialize_compressed(&mut e).expect("Failed to serialize point");
+                    if E.serialize_compressed(&mut e).is_err(){
+                        resp.accepted = -11;
+                        return Ok(resp)
+                    };
                     let resp: RPCProverResponse = RPCProverResponse{
                         keyset: Some(keyset),
                         user_label: Some(args.user_label),
@@ -396,14 +431,7 @@ pub mod rpc {
         // The first argument is currently (TODO) only used as a sanity check:
         // if it is not the same filename as the server has pre-loaded, we return
         // an error.
-        // The return values:
-        // 1 means proof fully valid and key image accepted
-        // -1 means the PedDLEQ proof for the rerandomized key is itself valid,
-        // but that same rerandomized key does not verify against the Curve Tree.
-        // -2 means that the PedDLEQ proof for the rerandomized key does not validate.
-        // -3 Means that the proofs are valid but the key image is rejected
-        //    as a double spend.
-        // -4 means that the keyset chosen does not match (see below)
+        // The return values are defined (as strings) in autct.rs
         #[export_method]
         pub async fn verify(&self, args: RPCProofVerifyRequest) -> Result<RPCProofVerifyResponse, String>{
             let verif_request = args;
@@ -419,29 +447,48 @@ pub mod rpc {
                 key_image: None,
             };
 
-            if !(self.prover_verifier_args.context_labels.contains(&verif_request.context_label)) {
-                resp.accepted = -4;
-                return Ok(resp);
-            }
             // get the appropriate J value, and Curve Tree,
             // by finding the index of the keyset, since
             // we set the contexts in the same order as the keysets
             // (and therefore Trees):
-            // (TODO can fold in above existence check to this call;
-            // but for now, this is guaranteed to succeed because of
-            // that check.)
-            let idx = self.prover_verifier_args.context_labels.iter().position(
-                |x| x == &verif_request.context_label).unwrap();
-            let decoded_proof = BASE64_STANDARD.decode(verif_request.proof)
-                .expect("Unexpected format of proof, should be base64");
+            let idx = match self.prover_verifier_args.context_labels.iter().position(
+                |x| x == &verif_request.context_label){
+                    Some(i) => i,
+                    None => {resp.accepted = -4;
+                             return Ok(resp)}
+                };
+            let decoded_proof = match BASE64_STANDARD.decode(verif_request.proof) {
+                Ok(x) => x,
+                Err(_) => {resp.accepted = -5;
+                    return Ok(resp);},
+            };
+
             let mut cursor = Cursor::new(decoded_proof);
             // deserialize the components of the PedDLEQ proof first and verify it:
-            let D = Affine::<SecpConfig>::deserialize_compressed(
-                &mut cursor).expect("Failed to deserialize D");
-            let E = Affine::<SecpConfig>::deserialize_compressed(
-                    &mut cursor).expect("Failed to deserialize E");
-            let proof = PedDleqProof::<Affine<SecpConfig>>::deserialize_with_mode(
-                &mut cursor, Compress::Yes, Validate::Yes).unwrap();
+            let D = match Affine::<SecpConfig>::deserialize_compressed(
+                &mut cursor){
+                    Ok(x) => x,
+                    Err(_) => {
+                        resp.accepted = -6;
+                        return Ok(resp)
+                    }
+                };
+            let E = match Affine::<SecpConfig>::deserialize_compressed(
+                    &mut cursor){
+                    Ok(x) => x,
+                    Err(_) => {
+                        resp.accepted = -6;
+                        return Ok(resp)
+                    }
+                };
+            let proof = match PedDleqProof::<Affine<SecpConfig>>::deserialize_with_mode(
+                &mut cursor, Compress::Yes, Validate::Yes){
+                    Ok(x) => x,
+                    Err(_) => {
+                        resp.accepted = -7;
+                        return Ok(resp)
+                    }
+                };
             let mut transcript = Transcript::new(APP_DOMAIN_LABEL);
             let verif_result = proof
             .verify(
@@ -455,7 +502,10 @@ pub mod rpc {
                 verif_request.user_label.as_bytes()
             );
             let mut b_E = Vec::new();
-            E.serialize_compressed(&mut b_E).expect("Failed to serialize point");
+            // failure is an internal code logic error,
+            // since it does not depend on external input,
+            // hence we leave the potential panic:
+            E.serialize_compressed(&mut b_E).expect("Failed to serialize point E");
             let str_E = hex::encode(&b_E).to_string();
             if !verif_result
                     .is_ok(){

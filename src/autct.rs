@@ -53,7 +53,6 @@ async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
     let res = rpcclient::verify(autctcfg).await;
     match res {
         Ok(rest) => {
-        // codes defined in lib.rs
         // TODO: create some callback structure to receive the resource
             match rest.accepted {
                 // deliberately verbose message here to help testers understand:
@@ -62,6 +61,9 @@ async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
                 -2 => println!("Request rejected, PedDLEQ proof is invalid."),
                 -3 => println!("Request rejected, proofs are valid but key image is reused."),
                 -4 => println!("Request rejected, keyset chosen does not match the server's."),
+                -5 => println!("Invalid encoding of proof, should be base64."),
+                -6 => println!("Curve point deserialization failure in proof."),
+                -7 => println!("PedDLEQ proof deserialization failed."),
                 _ => println!("Unrecognized error code from server?"),
             }
         },
@@ -99,6 +101,11 @@ async fn request_prove(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
                 -6 => println!("Proving request rejected, could not read private key from file."),
                 -7 => println!("Proving request rejected, invalid private key format (must be WIF or hex)."),
                 -8 => println!("Proving request rejected, provided key is not in the keyset"),
+                -9 => println!("Keyset string has incorrect syntax."),
+                -10 => println!("Ped-DLEQ proof serialization error."),
+                -11 => println!("Curve point serialization failure."),
+                -12 => println!("Bulletproof serialization error."),
+                -13 => println!("Curve tree merkle path serialiazation error"),
                 _ => println!("Unrecognized error code from server?"),
             }
         },

@@ -21,8 +21,11 @@ use ark_secq256k1::Config as SecqConfig;
 use ark_ec::short_weierstrass::{Affine, SWCurveConfig};
 
 pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
-    let (context_labels, keyset_file_locs) = autctcfg
-    .clone().get_context_labels_and_keysets().unwrap();
+    let (context_labels, keyset_file_locs) = match autctcfg
+    .clone().get_context_labels_and_keysets(){
+        Ok(x) => x,
+        Err(err) => return Err(err),
+    };
     let rpc_port = autctcfg.rpc_port.unwrap();
     let host: &str= &autctcfg.rpc_host.clone().unwrap();
     let port_str: &str = &rpc_port.to_string();

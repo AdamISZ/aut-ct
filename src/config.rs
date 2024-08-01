@@ -11,10 +11,14 @@ pub fn get_params_from_config_string(params: String) -> Result<(Vec<String>, Vec
     let mut cls: Vec<String> = vec![];
     for p in pairs {
         let mut kscl: Vec<String> = p.split(":").map(|s| s.to_string()).collect();
-        // TODO this is where we can throw errors based on invalid user input,
-        // so handle them:
-        kss.push(kscl.pop().unwrap());
-        cls.push(kscl.pop().unwrap());
+        kss.push(match kscl.pop() {
+            Some(x) => x,
+            None => return Err("invalid keyset syntax.".into())
+        });
+        cls.push(match kscl.pop(){
+            Some(x) => x,
+            None => return Err("invalid keyset syntax.".into())
+        });
     };
     Ok((cls, kss))
 }
