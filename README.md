@@ -224,6 +224,8 @@ Conceptually, developers should be able to run *this* application in server mode
 
 As long as websockets are supported, the same should be very easy to do foor other programming languages/environments.
 
+Read [here](./docs/RPC-API.md) for the definitions of the methods/objects used in the RPC-API.
+
 # Keysets
 
 Apart from small test key sets as in the [testing document](./testdata/README.md), you might want to use real world key sets from the mainnet taproot keys. [This document](./docs/utxo-keysets.md) explains how that can be done, but be aware that these data sets are large (e.g. it could easily take 30 minutes to do this, even after you figure out the process!).
