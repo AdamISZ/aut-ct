@@ -40,14 +40,16 @@ pub async fn verify(autctcfg: AutctConfig) -> Result<RPCProofVerifyResponse, Box
     Ok(result)
 }
 
-pub async fn createkeys(autctcfg: AutctConfig) -> Result<RPCCreateKeysResponse, Box<dyn Error>> {
+pub async fn createkeys(autctcfg: AutctConfig, password: String) -> 
+    Result<RPCCreateKeysResponse, Box<dyn Error>> {
     let rpc_port = autctcfg.rpc_port;
     let host: &str= &autctcfg.rpc_host.clone().unwrap();
     let port_str: &str = &rpc_port.unwrap().to_string();
     let addr: String = format!("ws://{}:{}", host, port_str);
     let req: RPCCreateKeysRequest = RPCCreateKeysRequest {
         bc_network: autctcfg.bc_network.unwrap(),
-        privkey_file_loc: autctcfg.privkey_file_str.unwrap()
+        privkey_file_loc: autctcfg.privkey_file_str.unwrap(),
+        encryption_password: password,
     };
     let mut client = Client::dial_websocket(&addr).await.unwrap();
     client.set_default_timeout(std::time::Duration::from_secs(3));
@@ -63,7 +65,8 @@ pub async fn createkeys(autctcfg: AutctConfig) -> Result<RPCCreateKeysResponse, 
     }
 }
 
-pub async fn prove(autctcfg: AutctConfig) -> Result<RPCProverResponse, Box<dyn Error>>{
+pub async fn prove(autctcfg: AutctConfig, password: String) -> 
+    Result<RPCProverResponse, Box<dyn Error>>{
     let rpc_port = autctcfg.rpc_port;
     let host: &str= &autctcfg.rpc_host.clone().unwrap();
     let port_str: &str = &rpc_port.unwrap().to_string();
@@ -81,8 +84,9 @@ pub async fn prove(autctcfg: AutctConfig) -> Result<RPCProverResponse, Box<dyn E
         depth: autctcfg.depth.unwrap(),
         generators_length_log_2: autctcfg.generators_length_log_2.unwrap(),
         user_label: autctcfg.user_string.unwrap(),
-        key_credential: autctcfg.privkey_file_str.unwrap(),
-        bc_network: autctcfg.bc_network.unwrap()
+        privkey_file_loc: autctcfg.privkey_file_str.unwrap(),
+        bc_network: autctcfg.bc_network.unwrap(),
+        encryption_password: password,
     };
     let mut client = Client::dial_websocket(&addr).await.unwrap();
     // we set a very generous timeout for proving requests, though they should

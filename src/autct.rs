@@ -7,10 +7,10 @@ use autct::rpcclient;
 use autct::rpcserver;
 use autct::config::AutctConfig;
 use autct::utils::write_file_string;
-
-
+use std::io::Write;
 use std::error::Error;
 use base64::prelude::*;
+use autct::encryption::encrypt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>{
@@ -22,13 +22,31 @@ async fn main() -> Result<(), Box<dyn Error>>{
         "serve" => {return rpcserver::do_serve(autctcfg).await
                     },
         "newkeys" => {return request_create_keys(autctcfg).await},
-        _ => {return Err("Invalid mode, must be 'prove', 'serve', 'newkeys' or 'verify'".into())},
+        // this extra tool is really just for testing:
+        "encryptkey" => {return request_encrypt_key(autctcfg).await}
+        _ => {return Err("Invalid mode, must be 'prove', 'serve', 'newkeys', 'encryptkey' or 'verify'".into())},
 
     }
 }
 
+/// This is a tool for manual testing; users will always
+/// have privkeys stored in encrypted files. Hence
+/// there is no attempt to handle errors properly.
+async fn request_encrypt_key(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>  {
+    let password = rpassword::prompt_password("Enter a password to encrypt the private key: ").unwrap();
+    let privkey_file_str = autctcfg.privkey_file_str.clone().unwrap();
+    let plaintext_priv_wif = autct::utils::read_file_string(&privkey_file_str)?;
+    let mut buf: Vec<u8> = Vec::new();
+    write!(&mut buf, "{}", plaintext_priv_wif)?;
+    let encrypted_data = encrypt(&buf, &password.as_bytes())?;
+    // TODO write_file_str does not pay attention to errors (but low priority)
+    write_file_string(&(autctcfg.privkey_file_str.clone().unwrap() + ".enc"), encrypted_data);
+    Ok(())
+}
 async fn request_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
-    let res = rpcclient::createkeys(autctcfg).await;
+    // This requires interaction from user: give a password on the command line:
+    let password = rpassword::prompt_password("Enter a password to encrypt the new private key: ").unwrap();
+    let res = rpcclient::createkeys(autctcfg, password).await;
     match res {
         Ok(rest) => {
         // codes defined in lib.rs
@@ -73,9 +91,11 @@ async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
 }
 
 async fn request_prove(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+    // This requires interaction from user: give a password on the command line:
+    let password = rpassword::prompt_password("Enter a password to decrypt the private key: ").unwrap();
     let required_proof_destination = autctcfg.clone().proof_file_str.unwrap();
     let b64chosen: bool = autctcfg.clone().base64_proof.unwrap();
-    let res = rpcclient::prove(autctcfg).await;
+    let res = rpcclient::prove(autctcfg, password).await;
     match res {
         Ok(rest) => {
         // codes defined in lib.rs
@@ -106,6 +126,7 @@ async fn request_prove(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
                 -11 => println!("Curve point serialization failure."),
                 -12 => println!("Bulletproof serialization error."),
                 -13 => println!("Curve tree merkle path serialiazation error"),
+                -14 => println!("Private key file decryption error."),
                 _ => println!("Unrecognized error code from server?"),
             }
         },

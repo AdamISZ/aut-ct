@@ -50,7 +50,7 @@ https://stackoverflow.com/a/75981247
 #[clap(version, about="Anonymous Usage Tokens from Curve Trees")]
 pub struct AutctConfig {
     /// `mode` is one of: "newkeys", "prove",
-    /// "serve" or "verify"
+    /// "encryptkey", "serve" or "verify"
     #[arg(short('M'), long, required=false)]
     #[clap(verbatim_doc_comment)]
     pub mode: Option<String>,
