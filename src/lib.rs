@@ -7,6 +7,7 @@ pub mod config;
 pub mod keyimagestore;
 pub mod rpcclient;
 pub mod rpcserver;
+pub mod encryption;
 extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
@@ -39,6 +40,7 @@ use ark_ec::{AffineRepr, short_weierstrass::SWCurveConfig, CurveGroup};
 use ark_secp256k1::Fq as SecpBase;
 use std::ops::{Mul, Add};
 use bitcoin::{Address, PrivateKey, XOnlyPublicKey};
+use encryption::{encrypt, decrypt};
 
 pub mod rpc {
 
@@ -63,7 +65,8 @@ pub mod rpc {
             #[derive(Serialize, Deserialize)]
             pub struct RPCCreateKeysRequest {
                 pub bc_network: String,
-                pub privkey_file_loc: String
+                pub privkey_file_loc: String,
+                pub encryption_password: String,
             }
 
             #[derive(Serialize, Deserialize)]
@@ -105,7 +108,12 @@ pub mod rpc {
                         resp.accepted = -3;
                         return Ok(resp);
                     }
-                    write_file_string(&resp.privkey_file_loc.clone().unwrap(), buf);
+                    // encrypt the data using password `encryption_password`:
+                    // (note use of 'expect' OK because the encryption operation
+                    // failing is a logic error):
+                    let encrypted_data = encrypt(&buf, &args.encryption_password.as_bytes())
+                    .expect("Failed to encrypt");
+                    write_file_string(&resp.privkey_file_loc.clone().unwrap(), encrypted_data);
                     let secp = Secp256k1::new();
                     // this is the standard way to generate plain-vanilla taproot addresses:
                     // it is not "raw" (rawtr in descriptors) but it applies a merkle root of
@@ -125,8 +133,9 @@ pub mod rpc {
                 pub depth: i32,
                 pub generators_length_log_2: u8,
                 pub user_label: String,
-                pub key_credential: String,
+                pub privkey_file_loc: String,
                 pub bc_network: String, // this is needed for parsing private keys
+                pub encryption_password: String,
             }
         
             #[derive(Debug, Serialize, Deserialize)]
@@ -196,17 +205,32 @@ pub mod rpc {
                           return Ok(resp);},
                     };
                     let secp = Secp256k1::new();
-                    // read privkey from file; we prioritize WIF format for compatibility
+                    // read privkey from encrypted file;
+                    // we prioritize WIF format for compatibility
                     // with external wallets, but if that fails, we attempt to read it
                     // as raw hex:
-                    let privkey_file_str = args.key_credential.clone();
-                    let privwifres = read_file_string(&privkey_file_str);
+                    let privkey_file_str = args.privkey_file_loc.clone();
+                    println!("Trying to read private key from: {}", args.privkey_file_loc.clone());
+                    let encrypted_privwif = match std::fs::read(&privkey_file_str) {
+                        Ok(data) => data,
+                        Err(e) => {resp.accepted = -6;
+                            println!("Got error: {:?}", e);
+                            return Ok(resp);}
+                    };
+                    //let encrypted_privwifres = read_file_string(&privkey_file_str);
+                    //if encrypted_privwifres.is_err(){
+                    //    resp.accepted = -6;
+                    //    println!("Got error: {:?}", encrypted_privwifres);
+                    //    return Ok(resp);
+                    // }
+                    //let encrypted_privwif = encrypted_privwifres.unwrap();
+                    let privwifres = decrypt(&encrypted_privwif,
+                    &args.encryption_password.as_bytes());
                     if privwifres.is_err(){
-                        resp.accepted = -6;
+                        resp.accepted = -14;
                         return Ok(resp);
                     }
                     let privwif = privwifres.unwrap();
-
                     // Because sparrow (and, kinda, Core) expect usage of non-raw p2tr,
                     // it means we're forced to use the default tweaking algo here, even
                     // though it majorly screws up the flow (as we want to use ark's Affine<>
@@ -218,7 +242,8 @@ pub mod rpc {
                     //    to get a tweaked pubkey.
                     // 3. Then serialize that as a string, deserialize it back out to Affine<Config>
 
-                    let privkeyres1 = PrivateKey::from_wif(privwif.as_str());
+                    let privkeyres1 = PrivateKey::from_wif(
+                        std::str::from_utf8(&privwif).unwrap());
                     let privkey: PrivateKey;
                     if privkeyres1.is_err(){
                         let privkeyres2 = PrivateKey::from_slice(

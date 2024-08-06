@@ -136,7 +136,7 @@ The config file is auto-generated in `~/.config/autct/default-config.toml` (or s
 
 Precedence operation is as you would expect: command line options take precedence over config file values, and be aware updates (i.e. just choosing a different option in a command line call) will be persisted to that config file. Third in order of precedence is the default value. As noted, two "options" (`-M` and `-k`) are required to be specified always.
 
-The depth and branching factor are the parameters of the curve tree. The `generators_length_log_2` may be removed in future but it should be the smallest power of 2 that's bigger than `D(912+L-1)` where `D` is the depth and `L` is the branching factor. If it helps, for keysets up to 500K in size, the defaults should be fine. The rpc port can also be configured here.
+The depth and branching factor are the parameters of the curve tree. The `generators_length_log_2` may be removed in future but it should be the smallest power of 2 that's bigger than `D(912+L-1)` where `D` is the depth and `L` is the branching factor (see Issue #19 for detailed discussion). If it helps, for keysets up to 500K in size, the defaults should be fine. The rpc port can also be configured here.
 
 Finally, one *may* need to set the `user_string` with `-u` to a hex serialized BIP340 pubkey or alternate user string (see [here](./docs/protocol-utxo.md) Appendix 2). This defines "who" can use the resources accessed by "consuming" the utxo in that context.
 
@@ -150,11 +150,17 @@ Put a WIF encoded private key into a file in the current directory called `privk
 echo cRczLRUHjDTEM92wagj3mMRvP69Jz3SEHQc8pFKiszFBPpJo8dVD > privkey
 ```
 
-(you could change the permissions of this file but this is only a test).
+Then encrypt it:
 
-The above private key corresponds to an existing signet utxo with more than 500k sats in it. Please don't spend it!
+```
+target/release/autct -M encryptkey --keysets none -i privkey -n signet
+```
 
-First, start the RPC server:
+You'll be prompted for a password. Delete the file `privkey` afterwards; the encrypted password will be in `privkey.enc`.
+
+This particular private key corresponds to an existing signet utxo with more than 500k sats in it. Please don't spend it!
+
+Next, start the RPC server:
 
 ```
 target/release/autct -M serve --keysets \
@@ -167,7 +173,7 @@ Then switch to a new terminal. Request computation of the proof:
 
 ```
 target/release/autct -M prove --keysets my-context:testdata/autct-203015-500000-0-2-1024.aks \
--n signet -i privkey -P default-proof-file
+-n signet -i privkey.enc -P default-proof-file
 ```
 
 This will likely take around 15 seconds, at the end you should see `Proof generated successfully` and the file `default-proof-file` will contain it.
