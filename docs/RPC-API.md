@@ -14,8 +14,9 @@ pub struct RPCProverRequest {
                 pub depth: i32,
                 pub generators_length_log_2: u8,
                 pub user_label: String,
-                pub key_credential: String,
+                pub privkey_file_loc: String,
                 pub bc_network: String,
+                pub encryption_password: String,
             }
 ```
 
@@ -24,7 +25,8 @@ Example json serialization:
 ```
 {"keyset":"my-context:testdata/fakekeys-6.txt","depth":2,
 "generators_length_log_2":11,"user_label":"name-goes-here",
-"key_credential":"privkey-four","bc_network":"signet"}
+"privkey_file_loc":"privkey-four","bc_network":"signet",
+"encryption_password": "hunter2"}
 ```
 
 #### Definition of request fields:
@@ -33,8 +35,9 @@ Example json serialization:
 * `depth` : must be an even number; recommend not changing from the default value of `depth` in the config.
 * `generators_log_length_2` : as above, do not change from the config default (11).
 * `user_label`: currently unused, so set to any string.
-* `key_credential`: this is the name of the file containing the private key. Use an absolute file path, or else, use the path relative to the location the server is running from.
+* `privkey_file_loc`: this is the name of the file containing the private key. Use an absolute file path, or else, use the path relative to the location the server is running from.
 * `bc_network` : one of `mainnet`, `signet`, `regtest`
+* `encryption_password`: the password to decrypt the private key file.
 
 Response object:
 
@@ -140,14 +143,16 @@ Request object:
 ```rust
 pub struct RPCCreateKeysRequest {
     pub bc_network: String,
-    pub privkey_file_loc: String
+    pub privkey_file_loc: String,
+    pub encryption_password: String
 }
 ```
 
 #### Definition of request fields
 
 * `bc_network` - as for `RPCProverRequest`
-* `privkey_file_loc` - as for `key_credential` in `RPCProver Request`, except note that this is a file that will be *written to*, not read from.
+* `privkey_file_loc` - as in `RPCProver Request`, except note that this is a file that will be *written to*, not read from.
+* `encryption_password` - the private key (WIF format) will be written to a file and then encrypted using AES-GCM-SIV and Argon2, to this password.
 
 
 Response object:
@@ -162,5 +167,5 @@ pub struct RPCCreateKeysResponse {
 
 #### Definition of response fields
 * `address` - a string containing a bitcoin address. The address provided will be of type `p2tr`, for the current network.
-* `privkey_file_loc` - echo of request (acts as confirmation that the private key, in WIF format, has been written to that file.)
+* `privkey_file_loc` - echo of request (acts as confirmation that the private key, in WIF format, has been written and encrypted to that file.)
 * `accepted` - an integer. if 0, it means the operation succeeded, negative integers represent an error. See `src/autct.rs` for detailed error messages.
