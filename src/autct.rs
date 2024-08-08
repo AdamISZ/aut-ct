@@ -10,7 +10,7 @@ use autct::utils::write_file_string;
 use std::io::Write;
 use std::error::Error;
 use base64::prelude::*;
-use autct::encryption::encrypt;
+use autct::encryption::{encrypt, decrypt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>{
@@ -23,8 +23,10 @@ async fn main() -> Result<(), Box<dyn Error>>{
                     },
         "newkeys" => {return request_create_keys(autctcfg).await},
         // this extra tool is really just for testing:
-        "encryptkey" => {return request_encrypt_key(autctcfg).await}
-        _ => {return Err("Invalid mode, must be 'prove', 'serve', 'newkeys', 'encryptkey' or 'verify'".into())},
+        "encryptkey" => {return request_encrypt_key(autctcfg).await},
+        // extra tool for exporting the key:
+        "decryptkey" => {return request_decrypted_key(autctcfg).await},
+        _ => {return Err("Invalid mode, must be 'prove', 'serve', 'newkeys', 'encryptkey', 'decryptkey' or 'verify'".into())},
 
     }
 }
@@ -43,6 +45,18 @@ async fn request_encrypt_key(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>
     write_file_string(&(autctcfg.privkey_file_str.clone().unwrap() + ".enc"), encrypted_data);
     Ok(())
 }
+
+// This tool is helpful to allow importing the key to a Bitcoin wallet
+async fn request_decrypted_key(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
+    let password = rpassword::prompt_password("Enter password to decrypt private key: ")?;
+    let privkey_file_str = autctcfg.privkey_file_str.clone().unwrap();
+    let encrypted_priv_wif = std::fs::read(&privkey_file_str)?;
+    let bytes_priv_wif = decrypt(&encrypted_priv_wif, &password.as_bytes())?;
+    let plaintext_priv_wif = std::str::from_utf8(&bytes_priv_wif)?;
+    println!("Private key: {}", plaintext_priv_wif);
+    Ok(())
+}
+
 async fn request_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
     // This requires interaction from user: give a password on the command line:
     let password = rpassword::prompt_password("Enter a password to encrypt the new private key: ").unwrap();
