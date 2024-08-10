@@ -3,9 +3,10 @@
 extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
+use autct::key_processing::create_fake_privkeys_values_files;
 use autct::rpcclient;
 use autct::rpcserver;
-use autct::config::AutctConfig;
+use autct::config::{AutctConfig, get_params_from_config_string};
 use autct::utils::write_file_string;
 use std::io::Write;
 use std::error::Error;
@@ -22,15 +23,41 @@ async fn main() -> Result<(), Box<dyn Error>>{
         "serve" => {return rpcserver::do_serve(autctcfg).await
                     },
         "newkeys" => {return request_create_keys(autctcfg).await},
+        "auditprove" => {return request_audit(autctcfg).await},
         // this extra tool is really just for testing:
         "encryptkey" => {return request_encrypt_key(autctcfg).await},
         // extra tool for exporting the key:
         "decryptkey" => {return request_decrypted_key(autctcfg).await},
-        _ => {return Err("Invalid mode, must be 'prove', 'serve', 'newkeys', 'encryptkey', 'decryptkey' or 'verify'".into())},
+        // extra (undocumented) tool for creating test files:
+        "audittestgen" => {return create_test_data(autctcfg).await},
+        _ => {return Err("Invalid mode, must be 'prove', 'auditprove', 'serve', 'newkeys', 'encryptkey', 'decryptkey' or 'verify'".into())},
 
     }
 }
 
+/// An undocumented tool for creating test files.
+/// Note that this misuses config vars as follows:
+/// filenameprefix is -k/keysets
+/// numprivs is depth/-d
+/// long parsed values/indices string is -p/rpchost
+/// Specify the total number of keys to be created in the keyset,
+/// then specify the indices for which you're going to generate
+/// the proof, along with the value for each index, using colon
+/// separated pairs. For example:
+/// ./autct -M audittestgen -W 100 -l 2:5000,14:90000 -k mytestdata
+async fn create_test_data(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
+    let filenameprefix = autctcfg.keysets.clone().unwrap();
+    let numprivs = autctcfg.depth.clone().unwrap() as u64;
+    let values_indices_str = autctcfg.rpc_host.clone().unwrap();
+    // extract a vector of indices and values as index:value,index:value,..
+    let (iv, vv) = get_params_from_config_string(
+        values_indices_str)?;
+    let values_vec: Vec<u64> = vv.iter().map(|x| x.parse::<u64>().unwrap()).collect();
+    let indices_vec: Vec<i32> = iv.iter().map(|x| x.parse::<i32>().unwrap()).collect();
+    create_fake_privkeys_values_files(numprivs,
+        indices_vec, values_vec, &filenameprefix)?;
+    Ok(())
+}
 /// This is a tool for manual testing; users will always
 /// have privkeys stored in encrypted files. Hence
 /// there is no attempt to handle errors properly.
@@ -101,6 +128,23 @@ async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
         },
         Err(_) => return Err("Verificatoin request processing failed.".into()),
     };
+    Ok(())
+}
+
+async fn request_audit(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+    let res = rpcclient::auditprove(autctcfg).await;
+    match res {
+        Ok(rest) => {
+            match rest.accepted {
+                0 => {println!("Proof generated successfully.");},
+                -1 => {println!("Error getting privkeys and values from file")},
+                -2 => {println!("Proof created does not verify.")},
+                -3 => {println!("Error encoding the serialized proof.")},
+                _ => println!("Unrecognized error code from server?"),
+            }
+        },
+        Err(_) => return Err("Audit proving request processing failed.".into()),
+    }
     Ok(())
 }
 

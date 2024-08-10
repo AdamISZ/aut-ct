@@ -34,8 +34,8 @@ pub fn verify_curve_tree_proof<
     path_commitments: SelectAndRerandomizePath<P0, P1>,
     sr_params: &SelRerandParameters<P0, P1>,
     curve_tree: &CurveTree<P0, P1>,
-    p0proof: R1CSProof<Affine<P0>>,
-    p1proof: R1CSProof<Affine<P1>>,
+    p0proof: &R1CSProof<Affine<P0>>,
+    p1proof: &R1CSProof<Affine<P1>>,
     root: Affine<P0>,
 ) -> Result<Affine<P0>, R1CSError> {
     let timer2 = Instant::now();

@@ -8,6 +8,10 @@ pub mod keyimagestore;
 pub mod rpcclient;
 pub mod rpcserver;
 pub mod encryption;
+pub mod generalschnorr;
+pub mod key_processing;
+pub mod sumrangeproof;
+pub mod auditor;
 extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
@@ -41,6 +45,8 @@ use ark_secp256k1::Fq as SecpBase;
 use std::ops::{Mul, Add};
 use bitcoin::{Address, PrivateKey, XOnlyPublicKey};
 use encryption::{encrypt, decrypt};
+use auditor::{get_audit_generators, AuditProof};
+use key_processing::get_privkeys_and_values;
 
 pub mod rpc {
 
@@ -48,6 +54,7 @@ pub mod rpc {
 
     use super::*;
     use std::sync::{Arc, Mutex};
+    use ark_ff::BigInteger256;
     use relations::curve_tree::{CurveTree, SelRerandParameters};
 
     #[derive(Clone)]
@@ -124,6 +131,154 @@ pub mod rpc {
                           None, privkey.network);
                     resp.address = Some(addr.to_string());
                     resp.accepted = 0;
+                    Ok(resp)
+                }
+            }
+
+            #[derive(Serialize, Deserialize)]
+            pub struct RPCAuditProofRequest {
+                pub keyset: String,
+                pub depth: i32,
+                pub generators_length_log_2: u8,
+                pub user_label: String,
+                pub privkeys_values_file_loc: String,
+                pub bc_network: String,
+                pub audit_range_min: u64, //k
+                pub audit_range_exponent: usize, //n
+            }
+
+            #[derive(Serialize, Deserialize)]
+            pub struct RPCAuditProofResponse {
+                pub keyset: Option<String>,
+                    pub user_label: Option<String>,
+                    pub context_label: Option<String>,
+                    pub audit_proof: Option<String>,
+                    pub accepted: i32,
+            }
+
+            pub struct RPCAuditProver{
+                pub prover_verifier_args:  RPCProverVerifierArgs,
+            }
+
+            #[export_impl]
+            impl RPCAuditProver {
+                #[export_method]
+                pub async fn audit_prove(&self, args: RPCAuditProofRequest)
+                -> Result<RPCAuditProofResponse, String>{
+                    let mut resp: RPCAuditProofResponse = RPCAuditProofResponse{
+                        keyset: None, // note that this needs to be parsed out
+                        user_label: Some(args.user_label.clone()),
+                        context_label: None, // as above for keyset
+                        audit_proof: None,
+                        accepted: 0,
+                    };
+                    let pva = &self.prover_verifier_args;
+
+                    // tasks:
+                    // 0. get_generators for xG + vJ + rH representations.
+                    // However "H" will be the default blinding basepoint from
+                    // "pc_gens " from curve trees, and will be the same between
+                    // the curve tree proofs and the sum range proof; it will then
+                    // be applied to the custom representation proof.
+                    let (G, J) = get_audit_generators();
+
+                    // 1. read in a a set of privkeys from the file,
+                    // and associated values of utxos, as two vectors.
+                    let res = get_privkeys_and_values(
+                        &args.privkeys_values_file_loc);
+                    if res.is_err(){
+                        resp.accepted = -1;
+                        return Ok(resp);
+                    }
+                    let (privkeys_wif, values) = res.unwrap();
+                    // 1a Form list of commitments as xG + vJ
+                    let mut comms: Vec<Affine<SecpConfig>> = Vec::new();
+                    let secp = Secp256k1::new();
+                    type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
+                    let mut privkeys: Vec<F> = Vec::new();
+                    for i in 0..privkeys_wif.len() {
+                        let privkeyres1 =
+                        PrivateKey::from_wif(
+                            &privkeys_wif[i]);
+                        let privkey: PrivateKey = privkeyres1.unwrap();
+                        let untweaked_key_pair: UntweakedKeypair =
+                        UntweakedKeypair::from_secret_key(
+                            &secp, &privkey.inner);
+                        let tweaked_key_pair =
+                        untweaked_key_pair.tap_tweak(&secp, None);
+                        let privkey_bytes = tweaked_key_pair.
+                        to_inner().secret_bytes();
+                        let privhex = hex::encode(&privkey_bytes);
+    
+                        let mut x =
+                        decode_hex_le_to_F::<F>(&privhex);
+                        let mut P = G.mul(x).into_affine();
+                        // Since we are using BIP340 pubkeys on chain, we must use the correct
+                        // sign of x, such that the parity of x*G is even.
+                        // This is because, the public servers/verifiers have no choice
+                        // but to assume that the public representation (a BIP340 key)
+                        // corresponds to that parity, when they do the P +vG arithmetic.
+                        // TODO refactor this, it is reused in key_processing.rs:
+                        let yval: SecpBase = *P.y().unwrap();
+                        let yvalint: BigInteger256 = BigInteger256::from(yval);
+                        if yvalint.0[0] % 2 == 1 {
+                            x = -x;
+                            P = -P;}
+                        privkeys.push(x);
+                        let v = F::from(values[i]);
+                        // C = xG + vJ (note *un*blinded)
+                        comms.push(P.add(J.mul(v)).into_affine());
+                    }
+                
+
+                    // 2. Call auditproof.create with:
+                    //pub fn create(k: u64,n: usize, G: &Affine<P0>, H: &Affine<P0>, J: &Affine<P0>, commitment_list: Vec<Affine<P0>>,
+                    //witness section: privkeys: Vec<P0::ScalarField>, values: Vec<u64>,
+                    // proof parameters: depth: usize, generators_length_log_2: usize, keyset: &str)
+                    //
+                    // for this, we take k, n, depth, genlog, keyset from args.
+                    // we take privkeys and values from step 1
+                    // we take G, H, J from step 0
+                    // and we take commitments by step 1a
+                    let prf: AuditProof<SecpBase, SecpConfig, SecqConfig> = 
+                    AuditProof::<SecpBase, SecpConfig, SecqConfig>::create(
+                        args.audit_range_min,
+                        args.audit_range_exponent,
+                        &G,
+                        &J,
+                        comms,
+                        privkeys,
+                        values,
+                        &pva.keyset_file_locs[0],
+                        &pva.curve_trees[0],
+                        &pva.sr_params
+                    ).unwrap(); // todo Result not working?
+                    //if prfres.is_err(){
+                    //    resp.accepted = -2;
+                    //    return Ok(resp);
+                    //}
+                    //let auditproof = prfres.unwrap();
+                    //
+                    // 4. Do a sanity check veriy call.
+                    //
+                    let verifresult = prf.verify(&G, &J,
+                        &pva.curve_trees[0], // assuming one is that OK? TODO
+                        &pva.sr_params);
+                    if verifresult.is_err() {
+                        resp.accepted = -2;
+                        return Ok(resp);
+                    }
+                    //let verifres = auditproof
+                    // 5. Update the response object and return the serialization of the proof.
+                    let mut buf = Vec::with_capacity(prf.serialized_size(Compress::Yes));
+                    if prf.serialize_compressed(&mut buf).is_err(){
+                        resp.accepted = -3;
+                        return Ok(resp);
+                    };
+                    let encoded = BASE64_STANDARD.encode(buf);
+                    resp.audit_proof = Some(encoded);
+                    //
+                    // NB This call may take some non trivial time so pay attention to timeout.
                     Ok(resp)
                 }
             }
@@ -569,7 +724,7 @@ pub mod rpc {
             let claimed_D = verify_curve_tree_proof(
                 path.clone(), &self.prover_verifier_args.sr_params, 
                 &self.prover_verifier_args.curve_trees[idx],
-                p0proof, p1proof, prover_root);
+                &p0proof, &p1proof, prover_root);
             let claimed_D_result = match claimed_D {
                 Ok(x) => x,
                 Err(_x) => {

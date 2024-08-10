@@ -2,7 +2,7 @@
 
 use ark_serialize::{ CanonicalDeserialize, 
     Compress, Validate};
-use crate::rpc::{RPCCreateKeys, RPCProverVerifierArgs};
+use crate::rpc::{RPCAuditProver, RPCCreateKeys, RPCProverVerifierArgs};
 use crate::utils::{get_curve_tree, get_leaf_commitments, convert_keys, APP_DOMAIN_LABEL};
 use tokio::{task, net::TcpListener};
 use std::fs;
@@ -45,13 +45,15 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
         // TODO add info to interface so user knows why the startup is hanging
         convert_keys::<SecpBase,
         SecpConfig,
-        SecqConfig>(fl.to_string(), autctcfg.generators_length_log_2.unwrap()).unwrap();
-        let leaf_commitments = get_leaf_commitments(&(fl.to_string() + ".p"));
+        SecqConfig>(fl.to_string(),
+         autctcfg.generators_length_log_2.unwrap()).unwrap();
+        let leaf_commitments = get_leaf_commitments(
+            &(fl.to_string() + ".p"));
 
         // Actually creating the curve tree is much less time consuming (a few seconds for most trees)
         let (curve_tree2, _) = get_curve_tree::
         <SecpBase, SecpConfig, SecqConfig>(
-        leaf_commitments,
+        &leaf_commitments,
         autctcfg.depth.unwrap().try_into().unwrap(), &sr_params);
         curve_trees.push(curve_tree2);
         let J = utils::get_generators(cl.as_bytes());
@@ -99,13 +101,16 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     );
     let prover_service = Arc::new(
         RPCProver{
-            prover_verifier_args}
+            prover_verifier_args: prover_verifier_args.clone()}
     );
+    let auditor_service = Arc::new(RPCAuditProver{
+        prover_verifier_args});
     let createkeys_service = Arc::new(RPCCreateKeys{});
     let server = Server::builder()
         .register(verifier_service) // register service
         .register(prover_service)
         .register(createkeys_service)
+        .register(auditor_service)
         .build();
     let listener = TcpListener::bind(&addr).await.unwrap();
 

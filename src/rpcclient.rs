@@ -65,6 +65,45 @@ pub async fn createkeys(autctcfg: AutctConfig, password: String) ->
     }
 }
 
+pub async fn auditprove(autctcfg: AutctConfig) ->
+Result<RPCAuditProofResponse, Box<dyn Error>> {
+    let rpc_port = autctcfg.rpc_port;
+    let host: &str= &autctcfg.rpc_host.clone().unwrap();
+    let port_str: &str = &rpc_port.unwrap().to_string();
+    let addr: String = format!("ws://{}:{}", host, port_str);
+
+    // request must specify *only one* context label, keyset.
+    // This will be checked by the server but we can check it here also.
+    let (cls, kss) = autctcfg.clone()
+    .get_context_labels_and_keysets().unwrap();
+    if kss.len() != 1 || cls.len() != 1 {
+        return Err("You may only specify one context_label:keyset in the request".into())
+    }
+    let req: RPCAuditProofRequest = RPCAuditProofRequest{
+        keyset: autctcfg.keysets.unwrap(),
+        depth: autctcfg.depth.unwrap(),
+        generators_length_log_2: autctcfg.generators_length_log_2.unwrap(),
+        user_label: autctcfg.user_string.unwrap(),
+        privkeys_values_file_loc: autctcfg.privkey_file_str.unwrap(),
+        bc_network: autctcfg.bc_network.unwrap(),
+        audit_range_min: autctcfg.audit_range_min.unwrap(),
+        audit_range_exponent: autctcfg.audit_range_exponent.unwrap(),
+    };
+    let mut client = Client::dial_websocket(&addr).await.unwrap();
+    // we set a very generous timeout here, this could be a problem
+    // that needs addressing until we do proof aggregation
+    client.set_default_timeout(std::time::Duration::from_secs(720));
+    let result = client
+    .r_p_c_audit_prover().audit_prove(req)
+    .await;
+    match result {
+        Ok(x) => return Ok(x),
+        Err(x) => {
+            println!("Error in rpc client audit prove call: {}", &x);
+            return Err(x.into());
+        }
+    }
+}
 pub async fn prove(autctcfg: AutctConfig, password: String) -> 
     Result<RPCProverResponse, Box<dyn Error>>{
     let rpc_port = autctcfg.rpc_port;

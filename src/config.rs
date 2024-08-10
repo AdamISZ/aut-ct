@@ -120,6 +120,19 @@ pub struct AutctConfig {
     #[arg(short('n'), long, required=false)]
     #[clap(verbatim_doc_comment)]
     pub bc_network: Option<String>,
+    /// The minimum value, in satoshis, as
+    /// as integer, for the range of the total
+    /// value of the utxos in the audit
+    #[arg(long, required=false)]
+    #[clap(verbatim_doc_comment)]
+    pub audit_range_min: Option<u64>,
+    /// The exponent n in 2^n such that the
+    /// maximum value, in satoshis, for the range
+    /// of the total value of the utxos in the
+    /// audit is audit_range_min + 2^n
+    #[arg(long, required=false)]
+    #[clap(verbatim_doc_comment)]
+    pub audit_range_exponent: Option<usize>
 }
 
 impl ::std::default::Default for AutctConfig {
@@ -142,6 +155,8 @@ impl ::std::default::Default for AutctConfig {
     keyimage_filename_suffix: Some("keyimages".to_string()),
     base64_proof: Some(false),
     bc_network: Some("mainnet".to_string()),
+    audit_range_min: Some(100000000u64),
+    audit_range_exponent: Some(25),
  } }
 }
 
@@ -176,6 +191,8 @@ impl AutctConfig {
         self.keyimage_filename_suffix = self.keyimage_filename_suffix.or(config_file.keyimage_filename_suffix);
         self.base64_proof = self.base64_proof.or(config_file.base64_proof);
         self.bc_network = self.bc_network.or(config_file.bc_network);
+        self.audit_range_min = self.audit_range_min.or(config_file.audit_range_min);
+        self.audit_range_exponent = self.audit_range_exponent.or(config_file.audit_range_exponent);
         Ok(self)
     }
 
