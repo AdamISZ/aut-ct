@@ -1,0 +1,296 @@
+\documentclass[10pt,a4paper]{article}
+%\usepackage{fullpage}
+\usepackage{fancyvrb}
+%\usepackage[latin1]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{framed}
+\usepackage{pstricks}    %for embedding pspicture.
+\usepackage{graphicx}
+\usepackage{hyperref}
+% (1) choose a font that is available as T1
+% for example:
+\usepackage{lmodern}
+
+% (2) specify encoding
+\usepackage[T1]{fontenc}
+
+% (3) load symbol definitions
+%\usepackage{textcomp}
+\usepackage{ifxetex,ifluatex}
+\usepackage{fixltx2e} % provides \textsubscript
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provides euro and other symbols
+\else % if luatex or xelatex
+  \usepackage{unicode-math}
+  \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+\fi
+% needed for small caption fonts
+%\usepackage[skip=2pt]{caption}
+
+%\DeclareCaptionFormat{myformat}{\fontsize{8}{9}\selectfont#1#2#3}
+%\captionsetup{format=myformat}
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\bibliographystyle{plain}
+
+\setlength{\parindent}{0pt}
+\author{Status: DRAFT}
+\begin{document}
+
+\title{Proof of multi-representation}
+\maketitle
+
+
+\section{Overview}
+
+ This document outlines a variant of what is commonly known as ``Generalized Schnorr protocols''. The particular variant discussed is motivated by the needs of the auditing algorithm in this code repository (``aut-ct'', auditing function).
+
+\vspace{5 pt}
+
+ The particular variant to be analyzed imagines the following scenario:
+
+\vspace{5 pt}
+
+ A ``representation'' of a witness consisting of a tuple of $m$ secrets $x_j$, with respect to a set of group elements or ``bases'', $B_j$, is defined as the group element:
+
+$$ C_i = \sum_j x_j B_{i,j}$$
+
+ Notice that this implies for $N$ commitments $C_0 \ldots C_{N-1}$, and $m$ secrets as above, we will have a matrix of bases $B_{i,j}$ of dimension $N \times m$. Notice that \textbf{each of the commitments are using the same witness values} (hence ``multirepresentation'').
+
+\vspace{5 pt}
+
+Correct application of the algorithm proves, in zero knowledge, that the prover knows the secret witness(es), and that each of the commitments is formed using that same witness with respect to the given bases.
+
+\vspace{5 pt}
+
+The remainder of this document does the following:
+
+\begin{itemize}
+\item A description of each of Setup, Prove and Verify steps of the algorithm
+\item A proof of soundness (non-forgeability) of the algorithm
+\item A proof of (honest verifier) zero knowledge of the algorithm
+\item A brief description of a specific variant of the protocol used in auditing proofs as in this code repository, and an analysis of the security properties of this specific case.
+\end{itemize}
+
+In particular, the last section justifies that the usage of this ``multirepresentation'' proof in this code repository is sound (cannot be forged) and does not leak privacy information about utxos of the prover (this is the principal motivation of the document).
+
+\section{Notation}
+
+Although we are tacitly assuming the use of the elliptic curve secp256k1, the remainder should apply to any other group $\mathbb{G}$ of prime order in which the discrete log problem is hard.
+
+We use $\mathbb{H}$ to mean specifically any cryptographically secure hash function for hashing arbitrary length byte messages. SHA-2 would be one valid possibility.
+
+As is standard practice, we use:
+
+\begin{itemize}
+\item capital letters $Q$ for group elements
+\item lower case letters $q$ for scalars in the group $\mathbb{Z}_p$, where $p$ is the order of the group
+\item additive notation, with $+$ meaning elliptic curve point addition and scalar multiplication being implicit, e.g. $qG$.
+\end{itemize}
+
+An additional slightly nonstandard use of notation for brevity: a subscript in an equation always means that the equation holds for all valid integers which that subscript represents; more specifically:
+
+$$ j= 0 \ldots m-1 \ \textrm{and}\ i=0 \ldots N-1$$
+
+with $i, j$ defined in the previous section.
+
+\section{Algorithm definition}
+
+\emph{Setup} : both parties use as inputs:
+
+\begin{itemize}
+\item Group elements, a set of size $N \times m$, with all relative discrete logs unknown. This is the matrix $B_{i,j}$.
+\item Prover shares with verifer, the \textbf{claim}: knowledge of multi-representation of a list of commitments $C_i$.
+\item An agreed string ``context-label''.
+\end{itemize}
+\vspace{5 pt}
+
+\emph{Prove} :
+
+\vspace{5 pt}
+
+Prover calculates a proof $\Pi$:
+\begin{itemize}
+\item Choose $k_j$ at random from $Z_p$
+\item Calculates an ephemeral commitment (nonce point) $R_i = \sum_j k_j B_{i,j}$ for each commitment.
+\item Applies the Fiat Shamir heuristic by calculating the hash output $e = \mathbb{H}(R_i, C_i, \textrm{context-label})$.
+\item Calculates a list of $j$ responses, as $\sigma_j = k_j + e \times x_j$.
+\end{itemize}
+
+The proof $\Pi$ thus consists of $N$ quantities $R_i$ and $m$ quantities $\sigma_j$.
+
+\vspace{5 pt}
+
+\emph{Verify} :
+
+\vspace{5 pt}
+
+The verifier takes the proof $\Pi$ and:
+
+\begin{itemize}
+\item decodes the lists $R_i$ and $\sigma_j$ from $\Pi$
+\item Verifies if $e = \mathbb{H}(R_i, C_i, \textrm{context-label})$
+\item Verifies if $R_i + eC_i = \sum_j \sigma_j B_{i, j}$ for every $i$.
+\end{itemize}
+
+\vspace{5 pt}
+
+Completeness can be demonstrated trivially.
+
+\section{Representation Uniqueness}
+
+Before going on to prove soundness and zero-knowledgeness, we state the following (relatively intuitively obvious, and probably covered elsewhere) theorem:
+
+\vspace{5 pt}
+
+\emph{Theorem}
+
+\vspace{5 pt}
+
+\emph{Given a representation of a group element $C$ with respect to a set of bases $B_j$, in the form of a set of scalars ${x_j}$, it is computationally infeasible to find an alternative representation set ${x_{j}'}$, unless the discrete log between at least two of the bases $B$ is known.}
+
+\vspace{5 pt}
+
+\emph{Proof}
+
+\vspace{5 pt}
+
+We proceed by induction on the size of the list of bases (using consistent notation, this size is $m$, i.e. $j = 0 \ldots m-1$. For the case $m=2$, we can reduce knowledge of a second representation, to a discrete logarithm solving, as follows:
+
+\begin{align*}
+C = aB_0 + bB_1 \\
+C = a'B_0 + b'B_1 \\
+\implies
+B_1 = \frac{a'-a}{b'-b} B_0
+\end{align*}
+
+From here, let us assume that the theorem is true for case $m=q \ge 2$, and examine the case $m=q+1$. Given that in this assumption, we \emph{cannot} find an alternative representation for any $q$ terms in the right hand side of:
+
+$$ C = x_0 B_0 + \ldots x_{q-1} B_{q-1} + x_q B_q $$
+
+, then let us consider the first $q$ terms as a unique representation. If there is an alternative representation it therefore is required to find an $x_{q}'$ such that $x_q B_q = x_{q}' B_q$ which is impossible because the group is of prime order, and therefore the mapping $Z_{p} \implies \mathbb{G}$ is one-one.
+
+\section{Computational Soundness}
+
+Comparing with the ``vanilla'' Schnorr identity protocol, we note a perhaps trivial difference: the same argument can be applied to only \emph{one} of the commitments, with the others being redundant. Considering only one commitment, say $i=0$, we can apply the standard rewinding argument to the interactive version of the protocol:
+
+After prover provides $R_0$, the extractor can return different values $e, e'$ in two separate executions, receiving in return two response \emph{sets} $\sigma_j, \sigma_{j}'$. He can then extract a valid witness as a set ${x_{j}^*}$, where:
+
+$$x_{j}^* = \frac{\sigma_{j}' - \sigma_j}{e' - e}$$
+
+this working of course, as usual, because the $k_j$ values in the two executions are the same.
+
+To assert that the set ${x_{j}^*} = {x_{j}}$, we refer to the Theorem of the previous section.
+
+
+\section{Honest Verifier Zero Knowledge}
+
+Modelling the hash function $\mathbb{H}$ as a random oracle, and by having a Simulator $\mathbb{S}$ control the adversary's ($\mathbb{A}$) access to the random oracle, we can generate fake transcripts without knowledge of the witness, thus demonstrating the zero knowledge property, for the protocol as described. This is, again, largely identical to the base Schnorr identity protocol for a witness consisting of a single scalar value in $\mathbb{Z}_p$; the only difference is that the protocol is repeated.
+
+\vspace{5 pt}
+
+The transcript of an honest execution looks like:
+
+$$(R_i, e, \sigma_j)$$
+
+So $\mathbb{S}$ can generate an arbitrary number of faked transcripts by choosing all $\sigma_j$ values at random, then choosing the RO value $e$ at random, then calculating $R_i = \sum_j \sigma_j B_{i,j} - eC_i$ for all commitments $C_i$, and then patching the RO function such that $\mathbb{H}(R_i, C_i, \textrm{context-label}) = e$.
+
+Much as for the soundness argument, nothing here is actually different from the single base case, i.e the Schnorr identity protocol/Schnorr signature for a single secret key.
+
+\section{Privacy considerations in the ``non-pure'' case}
+
+First, let's define ``non-pure''.
+
+\subsection{Non-pure instances of the statement}
+
+The statement is ``I have knowledge of the single representation of $C_i$ with respect to each of the base vectors $B_i$, whose relative discrete logs are unknown, $\forall i$'', in brief, as expanded on in detail above. In this section we focus on \textbf{what could be revealed from the $C_i$ themselves given any additional information}, beyond the statement (because indeed, logically, the proof $\Pi$ does not add to this information, by virtue of its (honest verifier + RO model) zero knowledge property.
+
+\vspace{5 pt}
+
+The statement is \emph{pure} if no other information about any of the commitments $C_i$ is revealed. Non pure instances are non-pure in three possible senses:
+
+\begin{enumerate}
+\item Some portion of the witness vector is revealed, e.g. $x_q \ q \in 0..m-1$.
+\item Some subcomponent of the commitment is revealed, e.g. $C_{i,0} = P$ such that $C_i = P + x_1B_{i,1} + \ldots + x_{j-1}B_{i, j-1}$.
+\item The $B_{i,j}$ are not all ``relative-discrete-log-unknown''. Specifically, we consider the case of $B_{i_1, j} = B_{i_2, j}$. Note that we do \emph{not} consider the case where $B_{i, j_1} = B_{i, j_2}$ as that would violate the soundness assumptions described above, so that its ``impurity'' is irrelevant.
+\end{enumerate}
+
+The implications of these ``impurities'' will depend on the use case of the protocol.
+
+\vspace{5 pt}
+
+A variant of cases (1) and (2) is if, though the exact values $P$ or $x_j$ were not directly revealed, they were known to come from an enumerable set. This actually applies to our auditing use case, since we construct commitments $C = P + vG + rH$ where v is the value of the utxo and $P$ is its public key, and they come from an enumerable set on the blockchain. This set is exponentially smaller than $\mathbb{G}$.
+
+\vspace{5 pt}
+
+Given the possibility of such ``impurities'', we must define the additional privacy properties that we wish to claim. We define $\mathbb{P}$:
+
+\vspace{5 pt}
+
+\emph{$\mathbb{P}1$ is the claim that the value $x_j^*$ is not revealed by the set of commitments $C_i$ even if $x_j$ is revealed for all indices $j \neq j^*$.}
+
+\vspace{5 pt}
+
+$\mathbb{P}1$ is a direct consequence of the hardness of the DLP for the group $\mathbb{G}$.
+
+\vspace{5 pt}
+
+\emph{$\mathbb{P}2$ is the claim that: given that the values of $x_j \ \forall j \neq j^*$ come from enumerable sets of size $X_j$, such that the tuple is a set of size $\prod_j X_j$, the value of $x_j^* B_{i,j^*}$ is still not revealed for any $i$ (that is, though the list of \textbf{possible} values of $x_j^* B_{i,j^*}$ is enumerable, it cannot be chosen).}
+
+\vspace{5 pt}
+
+Small corollary: if for some index $j$, the group element $x_jB_{i,j}$ is revealed instead of $x_j$, the same result holds. Notice that this covers impurity (2) as well as (1).
+
+\vspace{5 pt}
+$\mathbb{P}2$ is probably best understood with an illustrative example:
+
+\begin{align*}
+&C_0 = xB_{0,0} + \{Q_0\} \\
+&C_1 = xB_{1,0} + \{Q_1\} \\
+&...\\
+&C_{N-1} = xB_{N-1,0} + \{Q_{N-1}\} \\
+\end{align*}
+
+where, as a shorthand, we represent the (group element) values which are chosen from an enumerable set (of size $\prod_j X_j$) using $\{Q\}$.
+
+From this it is clear that we can enumerate the full set of \emph{possible} values of $xB_{i,0}$ but there is no way to distinguish which is correct, which is the desired property.
+
+This understanding of $\mathbb{P}2$ also allows us to conclude that it is not violated by ``impurity'' (3) above, since having the same base across different commitments is equivalent to simply knowing that group element (whether it is the same, or known, it can be subtracted/removed from the unknown components).
+
+\vspace{5 pt}
+
+\subsection{Application to auditing protocol}
+
+In the auditing use case we have $m=3$ and $N=2$, and we have a mix of impurities (1), (2) and (3):
+
+\begin{align*}
+C_0 = xG + vJ + rH \\
+C_1 = xG_1 + vG_2 + rH
+\end{align*}
+
+Impurity (1) applies because $v$ is from an enumerable set (from the blockchain), (2) applies because $P=xG$ is similarly enumerable, and impurity (3) applies because we use the same blinding base $H$ (although that could be trivially avoided). However $\mathbb{P}2$ still holds, as per the above arguments. Concretely, consider the subtraction $C_1 - C_0$:
+
+$$xG_1  = v(G_2 -J) -C_1 + C_0 + P$$
+
+; while the right hand is easily enumerable using all possible values of the tuple $(v, P)$ from the blockchain, it is not possible to validate the correctness of the result for the correct specific tuple ($P^*, v^*)$ without violating the DLP hardness assumption of the group (to put it another way, $xG_1$ reveals nothing about $x$, and cannot be correlated with $P$).
+
+
+
+
+\hypertarget{references}{%
+\section[References]{\texorpdfstring{\protect\hypertarget{anchor-77}{}{}References}{References}}\label{references}}
+
+TODO
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \protect\hypertarget{anchor-4}{}{}Bitcoin Improvement Proposal 340 (Schnorr signatures)
+  \url{https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki}
+\end{enumerate}
+\end{document}
