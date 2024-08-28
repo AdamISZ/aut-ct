@@ -16,7 +16,9 @@ Anonymous usage tokens from curve trees
 
 (Caveat: read the [caveat](#caveat), please.)
 
-If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to [Installation](#installing) and then [Worked Example](#worked-example).
+* If you are interested in **proof of assets** not anonymous usage tokens, please go to [this page](./auditor-docs/).
+
+* If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to [Installation](#installing) and then [Worked Example](#worked-example).
 
 Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short so that it can be used practically in real systems. In practice this code already allows such verifications **in about 40-60ms on commodity hardware for up to 2.5M pubkeys (at least)**.
 
