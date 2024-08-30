@@ -132,11 +132,27 @@ async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
 }
 
 async fn request_audit(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
-    let res = rpcclient::auditprove(autctcfg).await;
+    let res = rpcclient::auditprove(
+        autctcfg.clone()).await;
+    let required_proof_destination = autctcfg.clone()
+    .proof_file_str.unwrap();
+    let b64chosen: bool = autctcfg.base64_proof.unwrap();
     match res {
         Ok(rest) => {
             match rest.accepted {
-                0 => {println!("Proof generated successfully.");},
+                0 => {println!("Proof generated successfully.");
+                // receive the base64 proof and convert it to a binary file.
+                let b64proof = rest.audit_proof.unwrap();
+                if b64chosen {
+                    println!("Here is the proof in base64 format: {}", b64proof);
+                }
+                else {
+                let decoded_proof = BASE64_STANDARD
+                .decode(b64proof)
+                .expect("Unexpected format of proof, should be base64");
+                write_file_string(&required_proof_destination, decoded_proof);
+                }
+                },
                 -1 => {println!("Error getting privkeys and values from file")},
                 -2 => {println!("Proof created does not verify.")},
                 -3 => {println!("Error encoding the serialized proof.")},

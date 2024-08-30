@@ -55,11 +55,15 @@ I own the private keys to a set of 10 taproot Bitcoin utxos out of all taproot u
 
 This concrete example illustrates quite well the potential use case of such a proving system: suppose a small company uses a reserve/treasury/holding of bitcoin as part of its relationship with customers (including the most direct case, where the company holds the customers' own bitcoin!), clients or business partners. In this case it may be very helpful to prove ownership of the coins, but it may also be very beneficial for security (and business confidentiality) to not reveal the on chain activities of the enterprise.
 
+\subsection{A brief note on proof of reserves}
+
+It's important to note that ``proof of assets'' is not sufficient for cases of customers wishing to gain some guarantees of the relationship between funds that the custodian claims to hold for them, and total assets held. For that (albeit slightly unclear) concept, then a ``proof of liabilities'' algorithm is required in addition to proof of assets. This algorithm does \textbf{not} address that requirement. A good summary of some thoughts on how this is achieved in practice, with attempts at privacy, is described in Bitmex Research's article {[}\protect\hyperlink{anchor-3}{3}{]} .
+
 \vspace{5 pt}
 
-\subsection{Earlier work}
+\section{Background context on proof of BTC assets}
 
-\subsubsection{The 1000ft view}
+\subsection{The 1000ft view}
 
 Approaches to proving facts about the bitcoin blockchain in zero-knowledge have to fall into one of three categories. Before listing them, consider these two issues that have to be addressed:
 
@@ -75,6 +79,8 @@ Given this, it's easier to understand the three categories of approaches taken t
 \item Still using only the ECDLP assumption on secp256k1, but using Bulletproofs which provides compact proofs, but linear verification. This can be a very helpful step up for some scenarios (see: Confidential Transactions as described in {[}\protect\hyperlink{anchor-3}{3}{]}, but in itself does not aid performance as is required for huge anon. sets. However, when combined with an algebraic tree structure as in {[}\protect\hyperlink{anchor-2}{2}{]}, which makes use of the lucky fact that there is a cycle over the curves secp256k1/secq256k1, we get logarithmic verification times. While this is structurally more complex than (1), it is always likely to win out unless the application does not require a very large anonymity set (a difficult scenario to envisage).
 \item Using other assumptions ``knowledge of exponent'' and *-diffie-hellman on bilinear groups, (zk)SNARKs can be applied to this problem. Again, the problem here is the difficulty of ``representing'' the large anonymity set of group elements and hashes from the bitcoin blockchain, neither of which are expressible ``natively'' in a pairing-friendly group. This results in very large arithmetic circuits. As a result, it is possible to build such systems with fast verifiers and constant size proofs, but with a very large upfront proving cost (where it is even practical at all).
 \end{enumerate}
+
+\subsection{Earlier work on the problem}
 
 The seminal work ``Provisions'' addresses the same ``proof of assets'' scenario, as well as ``proof of liabilities'' (specifically for asset custodians), but using only standard $\Sigma$-protocol techniques (including proof of commitment to bit representations). Thus it is the perhaps canonical example of category (1) in the list above. Hence it is probably impractical for very large anonymity sets. To quote the paper itself:
 
@@ -111,6 +117,8 @@ This illustrates something problematic: even though the \emph{technique} used he
 
 On the other hand, if a person/enterprise wants to prove ownership of \emph{at least} $x$ satoshis, and proves ownership of $y$ s.t. $x < y < x + \delta$, the range of possible utxo sets \emph{can}, in most normal scenarios, result in very large anonymity sets of sets of utxos.
 
+\section{The algorithm for proof of BTC assets in range}
+
 \subsection{High level outline of the properties of the algorithm}
 
 The algorithm is highly efficient in verification of the proofs, taking 10s to 100s of milliseconds if well optimised, and this time is little affected for utxo sets of up to millions. Note that only taproot utxos are supported, and that there are in total, as of this writing approximately 40M such utxos, of which a large majority are ``dusty'' in size and uneconomic. There are perhaps $\simeq$ 6M of normal size, which means ``theoretical anonymity set'' for such a privacy-preserving proof of reserve could go into the millions, as of today (but as we will see ``effective anonymity set'' will be a lot smaller than the theoretical one).
@@ -131,7 +139,7 @@ Both prover and verifier need access to the filtered list of utxos, which is of 
 
 The algorithm is based principally on Curve Trees{[}\protect\hyperlink{anchor-2}{2}{]}, and Bulletproofs{[}\protect\hyperlink{anchor-3}{3}{]}. The reason for this choice will be explained in the next section. Then, the remainder of the document will explain each subcomponent of the proving/verifying algorithms in detail, followed by a brief discussion of the privacy properties and performance properties of the algorithm.
 
-\section{The technical components of the algorithm}
+\subsection{The technical components of the algorithm}
 
 To repeat for convenience, but in more generality, we prove statements of this form:
 
@@ -247,13 +255,13 @@ Next, he proves that the committed sum $v_{\textrm{sum}}$ is in range:
 
 First, we define a function $f_b$:
 
-$$ f_b(v, i) = v\ \texttt{>>}\ i \ \texttt{\&}\ 1$$
+$$ f_b(x, i) = x\ \texttt{>>}\ i \ \texttt{\&}\ 1$$
 
-$f_b$ extracts the $i$-th bit of a value $v$.
+$f_b$ extracts the $i$-th bit of a value $x$.
 
 Next, iterating over $i$ from $1 \ldots n$, we calculate  variables:
 
-$$b_i = f_b(v, i)\ \quad a_i = 1 - f_b(v, i)$$
+$$b_i = f_b(v-k, i)\ \quad a_i = 1 - f_b(v-k, i)$$
 
 And using the structure of bulletproofs, assign a multiplication gate $a \cdot b = o$ for each of these bits. We then make additional arithmetic constraints that:
 
@@ -267,7 +275,7 @@ Finally we add an arithmetic constraint that:
 
 $$v_{\textrm{sum}} - k - \sum_i b_i 2^i = 0$$
 
-which proves that the sum is of form $k+\alpha$ where $\alpha$ as a valid $n$-bit binary representation, as required.
+which proves that the sum is of form $k+\alpha$ where $\alpha$ has a valid $n$-bit binary representation, as required.
 
 \subsection{Proof of multirepresentation}
 
@@ -304,11 +312,11 @@ This introduces a further two group elements and one scalar per proof (since unl
 
 Having provided $I_i$ for each $i$ in the proof, the verifier has a final check: if $I_i$ values are not all distinct, the proof is invalid due to it having re-used the same public key. It is for this reason that, in the current algorithm, \textbf{reused addresses are not allowed in the proof of assets}. This restriction could be removed with a fairly trivial tweak to the algorithm.
 
-\subsection{Effective anonymity sets}
+\section{Effective anonymity sets}
 
 TODO
 
-\subsection{Performance results}
+\section{Performance results}
 
 TODO
 
@@ -346,5 +354,7 @@ TODO
  \item
  \protect\hypertarget{anchor-9}{}{} Polynomial Commitments
  \url{https://cacr.uwaterloo.ca/techreports/2010/cacr2010-10.pdf} Kate, Zaverucha, Goldberg 2010
+ \item
+ \protect\hypertarget{anchor-10}{}{} Fixing The Privacy Gap In Proof Of Liability Protocols \url{https://blog.bitmex.com/addressing-the-privacy-gap-in-proof-of-liability-protocols/} Bitmex Research 2021
 \end{enumerate}
 \end{document}
