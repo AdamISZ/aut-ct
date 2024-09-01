@@ -245,10 +245,8 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
         .collect::<HashSet<&Affine<P0>>>()
         .len();
         if uniques_len != keyimages.len() {
-            println!("Rejecting due to duplicate utxos");
                 return Err("Duplicate key images in representation proofs".into());
         }
-
         let m = self.blinded_commitment_list.len();
         for i in 0..m {
             // verify representation proof
@@ -311,7 +309,6 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
         self.curvetree_p1_proofs.serialized_size(compress);
         let paths_size =
         self.curvetree_paths.serialized_size(compress);
-        // add one more 33 for root
         let repr_proofs_size =
         self.representation_proofs.serialized_size(compress);
         // The sum-range proof is an R1CS Proof, a single commitment
@@ -321,8 +318,9 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
         let Q_comms_size = self.Q_comms.serialized_size(compress);
         let k_size = self.k.serialized_size(compress);
         let n_size = self.n.serialized_size(compress);
+        // add one more 33 for root and one for blinding base
         blinded_commitment_size + p0proofs_size + p1proofs_size
-        + paths_size + 33 + sum_range_proof_size + Q_comms_size
+        + paths_size + 33*2 + sum_range_proof_size + Q_comms_size
         + repr_proofs_size + k_size + n_size
     }
 }
@@ -350,7 +348,6 @@ ScalarField = P0::BaseField> + Copy,> CanonicalSerialize for AuditProof<F, P0, P
         self.curvetree_p1_proofs.serialized_size(compress);
         let paths_size =
         self.curvetree_paths.serialized_size(compress);
-        // add one more 33 for root
         let repr_proofs_size =
         self.representation_proofs.serialized_size(compress);
         // The sum-range proof is an R1CS Proof, a single commitment
@@ -360,12 +357,12 @@ ScalarField = P0::BaseField> + Copy,> CanonicalSerialize for AuditProof<F, P0, P
         let Q_comms_size = self.Q_comms.serialized_size(compress);
         let k_size = self.k.serialized_size(compress);
         let n_size = self.n.serialized_size(compress);
+        // add one more 33 for root and one for blinding base
         blinded_commitment_size + p0proofs_size + p1proofs_size
-        + paths_size + 33 + sum_range_proof_size + Q_comms_size
+        + paths_size + 33*2 + sum_range_proof_size + Q_comms_size
         + repr_proofs_size + k_size + n_size
     }
 
-    /// Serializes the proof into a byte array of 4 32/33-byte elements.
     fn serialize_with_mode<W: Write>(
         &self,
         mut writer: W,
@@ -377,9 +374,8 @@ ScalarField = P0::BaseField> + Copy,> CanonicalSerialize for AuditProof<F, P0, P
         self.curvetree_p1_proofs.serialize_with_mode(&mut writer, compress)?;
         self.curvetree_paths.serialize_with_mode(&mut writer, compress)?;
         self.root.serialize_with_mode(&mut writer, compress)?;
-        //self.representation_proofs.serialize_with_mode(&mut writer, compress)?;
+        self.representation_proofs.serialize_with_mode(&mut writer, compress)?;
         self.sum_range_proof.serialize_with_mode(&mut writer, compress)?;
-        // sum commitment:
         self.sum_commitment.serialize_with_mode(&mut writer, compress)?;
         self.Q_comms.serialize_with_mode(&mut writer, compress)?;
         self.k.serialize_with_mode(&mut writer, compress)?;
@@ -396,7 +392,7 @@ ScalarField = P0::BaseField> + Copy,> CanonicalDeserialize for AuditProof<F, P0,
         mut reader: Re,
         compress: Compress,
         validate: ark_serialize::Validate,
-    ) -> Result<Self, SerializationError> {
+    ) -> Result<Self, SerializationError> { 
         Ok(Self {
             blinded_commitment_list: Vec::<Affine<P0>>::deserialize_with_mode(
                 &mut reader, compress, validate)?,

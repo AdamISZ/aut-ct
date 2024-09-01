@@ -24,6 +24,7 @@ async fn main() -> Result<(), Box<dyn Error>>{
                     },
         "newkeys" => {return request_create_keys(autctcfg).await},
         "auditprove" => {return request_audit(autctcfg).await},
+        "auditverify" => {return request_audit_verify(autctcfg).await},
         // this extra tool is really just for testing:
         "encryptkey" => {return request_encrypt_key(autctcfg).await},
         // extra tool for exporting the key:
@@ -131,6 +132,26 @@ async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+async fn request_audit_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+    let res = rpcclient::auditverify(autctcfg.clone()).await;
+    match res {
+        Ok(rest) => {
+            let satmin = autctcfg.audit_range_min.unwrap();
+            let satmax = satmin + 2u64.pow(autctcfg.audit_range_exponent.unwrap() as u32);
+            match rest.accepted {
+                1 => println!("Audit is valid! The utxos' total value is between {} and {} satoshis.",
+                 satmin, satmax),
+                -1 => println!("Invalid encoding of proof, should be base64."),
+                -2 => println!("Invalid proof serialization"),
+                -3 => println!("Proof of assets in range is rejected, proof invalid."),
+                _ => println!("Unrecognized error code from server?"),
+            }
+        },
+        Err(_) => return Err("Verificatoin request processing failed.".into()),
+    };
+    Ok(())
+
+}
 async fn request_audit(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let res = rpcclient::auditprove(
         autctcfg.clone()).await;

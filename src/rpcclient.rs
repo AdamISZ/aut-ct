@@ -9,6 +9,40 @@ use crate::rpc::*;
 use std::error::Error;
 use std::fs;
 
+pub async fn auditverify(autctcfg: AutctConfig) ->
+Result<RPCAuditProofVerifyResponse, Box<dyn Error>>{
+    let rpc_port = autctcfg.rpc_port;
+    let host: &str= &autctcfg.rpc_host.clone().unwrap();
+    let port_str: &str = &rpc_port.unwrap().to_string();
+    let addr: String = format!("ws://{}:{}", host, port_str);
+    let proof_file_str = autctcfg.proof_file_str.clone().unwrap();
+    let buf = fs::read(proof_file_str).unwrap();
+    // request must specify *only one* context label, keyset:
+    let (mut cls, mut kss) = autctcfg.clone()
+    .get_context_labels_and_keysets().unwrap();
+    if kss.len() != 1 || cls.len() != 1 {
+        return Err("You may only specify one context_label:keyset in the request".into())
+    }
+    let keyset = kss.pop().unwrap();
+    let context_label = cls.pop().unwrap();
+    let req: RPCAuditProofVerifyRequest = RPCAuditProofVerifyRequest {
+        keyset,
+        user_label: autctcfg.user_string.unwrap(),
+        context_label,
+        depth: autctcfg.depth.unwrap(),
+        generators_length_log_2: autctcfg.generators_length_log_2.unwrap(),
+        audit_range_min: autctcfg.audit_range_min.unwrap(),
+        audit_range_exponent: autctcfg.audit_range_exponent.unwrap(),
+        proof: BASE64_STANDARD.encode(buf),
+    };
+    let mut client = Client::dial_websocket(&addr).await.unwrap();
+    client.set_default_timeout(std::time::Duration::from_secs(3));
+    let result: RPCAuditProofVerifyResponse = client
+    .r_p_c_audit_proof_verifier().auditverify(req)
+    .await
+    .unwrap();
+    Ok(result)  
+}
 pub async fn verify(autctcfg: AutctConfig) -> Result<RPCProofVerifyResponse, Box<dyn Error>>{
     let rpc_port = autctcfg.rpc_port;
     let host: &str= &autctcfg.rpc_host.clone().unwrap();

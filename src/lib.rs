@@ -181,7 +181,7 @@ pub mod rpc {
                     // the curve tree proofs and the sum range proof; it will then
                     // be applied to the custom representation proof.
                     let (G, J) = get_audit_generators();
-
+                    print_affine_compressed(J, "J");
                     // 1. read in a a set of privkeys from the file,
                     // and associated values of utxos, as two vectors.
                     let res = get_privkeys_and_values(
@@ -365,20 +365,12 @@ pub mod rpc {
                     // with external wallets, but if that fails, we attempt to read it
                     // as raw hex:
                     let privkey_file_str = args.privkey_file_loc.clone();
-                    println!("Trying to read private key from: {}", args.privkey_file_loc.clone());
                     let encrypted_privwif = match std::fs::read(&privkey_file_str) {
                         Ok(data) => data,
                         Err(e) => {resp.accepted = -6;
                             println!("Got error: {:?}", e);
                             return Ok(resp);}
                     };
-                    //let encrypted_privwifres = read_file_string(&privkey_file_str);
-                    //if encrypted_privwifres.is_err(){
-                    //    resp.accepted = -6;
-                    //    println!("Got error: {:?}", encrypted_privwifres);
-                    //    return Ok(resp);
-                    // }
-                    //let encrypted_privwif = encrypted_privwifres.unwrap();
                     let privwifres = decrypt(&encrypted_privwif,
                     &args.encryption_password.as_bytes());
                     if privwifres.is_err(){
@@ -566,7 +558,79 @@ pub mod rpc {
                     Ok(resp)
                 }
             }
-        
+
+    #[derive(Serialize, Deserialize)]
+    pub struct RPCAuditProofVerifyRequest {
+        pub keyset: String,
+        pub context_label: String,
+        pub proof: String,
+        pub depth: i32,
+        pub generators_length_log_2: u8,
+        pub user_label: String,
+        pub audit_range_min: u64, //k
+        pub audit_range_exponent: usize, //n
+    }
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct RPCAuditProofVerifyResponse {
+        pub keyset: String,
+        pub context_label: String,
+        pub accepted: i32,   
+    }
+
+    pub struct RPCAuditProofVerifier {
+        pub prover_verifier_args: RPCProverVerifierArgs,
+    }
+
+    #[export_impl]
+    impl RPCAuditProofVerifier {
+        #[export_method]
+        pub async fn auditverify(&self,
+            args: RPCAuditProofVerifyRequest) ->
+            Result<RPCAuditProofVerifyResponse, String>{
+                let verif_request = args;
+                let pva = &self.prover_verifier_args;
+                let (G, J) = get_audit_generators();
+                let mut resp: RPCAuditProofVerifyResponse =
+                RPCAuditProofVerifyResponse{
+                    keyset: verif_request.keyset.clone(),
+                    context_label: verif_request.context_label.clone(),
+                    accepted: -100,
+                };
+                let decoded_proof = match BASE64_STANDARD
+                .decode(verif_request.proof) {
+                    Ok(x) => x,
+                    Err(_) => {resp.accepted = -1;
+                        return Ok(resp);},
+                };
+    
+                let mut cursor = Cursor::new(decoded_proof);
+                let prf = match AuditProof::<SecpBase, SecpConfig, SecqConfig>
+                ::deserialize_with_mode(&mut cursor, Compress::Yes, Validate::Yes ){
+                        Ok(x) => x,
+                        Err(e) => {
+                            println!("Got error in deserialize: {}", e);
+                            resp.accepted = -2;
+                            return Ok(resp)
+                        }
+                };
+                // we assume that audit mode only ever
+                // uses one keyset in the definition, hence [0]:
+                let verifresult = prf.verify(&G, &J,
+                        &pva.curve_trees[0],
+                        &pva.sr_params);
+                if verifresult.is_err() {
+                        resp.accepted = -3;
+                        return Ok(resp);
+                }
+                else {
+                    // All checks successful, return resource
+                    println!("Verifying audit proof passed");
+                    resp.accepted = 1;
+                    Ok(resp)
+                }   
+        }
+    }
+
     #[derive(Serialize, Deserialize)]
     pub struct RPCProofVerifyRequest {
         pub keyset: String,

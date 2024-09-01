@@ -2,7 +2,7 @@
 
 use ark_serialize::{ CanonicalDeserialize, 
     Compress, Validate};
-use crate::rpc::{RPCAuditProver, RPCCreateKeys, RPCProverVerifierArgs};
+use crate::rpc::{RPCAuditProofVerifier, RPCAuditProver, RPCCreateKeys, RPCProverVerifierArgs};
 use crate::utils::{get_curve_tree, get_leaf_commitments, convert_keys, APP_DOMAIN_LABEL};
 use tokio::{task, net::TcpListener};
 use std::fs;
@@ -104,6 +104,8 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
             prover_verifier_args: prover_verifier_args.clone()}
     );
     let auditor_service = Arc::new(RPCAuditProver{
+        prover_verifier_args: prover_verifier_args.clone()});
+    let auditor_verify_service = Arc::new(RPCAuditProofVerifier{
         prover_verifier_args});
     let createkeys_service = Arc::new(RPCCreateKeys{});
     let server = Server::builder()
@@ -111,6 +113,7 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
         .register(prover_service)
         .register(createkeys_service)
         .register(auditor_service)
+        .register(auditor_verify_service)
         .build();
     let listener = TcpListener::bind(&addr).await.unwrap();
 
