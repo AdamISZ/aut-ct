@@ -3,6 +3,8 @@ extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
 
+use std::{collections::HashSet, error::Error};
+
 use crate::utils;
 
 use alloc::vec::Vec;
@@ -284,9 +286,25 @@ impl<C: AffineRepr> CanonicalDeserialize for GenSchnorrProof<C> {
     }
 }
 
+pub fn check_no_duplicate_keyimages_in_repr_proofs<C: AffineRepr>(
+    repr_proofs: &Vec<GenSchnorrProof<C>>)
+    -> Result<(), Box<dyn Error>>{
+    let keyimages: Vec<C> = repr_proofs
+        .iter().map(|x| x.I).collect::<Vec<_>>();
+        let uniques_len = keyimages.iter()
+        .collect::<HashSet<&C>>()
+        .len();
+        if uniques_len != keyimages.len() {
+                return Err("Duplicate key images in representation proofs".into());
+        }
+        Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::rngs::ThreadRng;
+    use rand::thread_rng;
     extern crate hex;
     extern crate ark_secp256k1;
     use ark_ec::AffineRepr;
@@ -294,60 +312,109 @@ mod tests {
     use ark_ec::short_weierstrass::Affine;
     use crate::affine_from_bytes_tai;
     use crate::utils::get_generators;
+    type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
+    use ark_ec::CurveGroup;
+
+    /// Useful to be able to create a whole batch of repr
+    /// proofs so that we can check cross-proof properties,
+    /// specifically key image:
+    fn generate_rand_repr_proofs(
+        n: usize, ncomms: usize, nbases: usize, rng: &mut ThreadRng)
+        -> (Vec<GenSchnorrProof<Affine<SecpConfig>>>,
+            Vec<Vec<Vec<Affine<SecpConfig>>>>,
+            Vec<Vec<Affine<SecpConfig>>>,
+            Vec<Vec<F>>){
+        let mut proofsres: Vec<GenSchnorrProof<Affine<SecpConfig>>> = Vec::new();
+        let mut basesres: Vec<Vec<Vec<Affine<SecpConfig>>>> = Vec::new();
+        let mut commsres: Vec<Vec<Affine<SecpConfig>>> = Vec::new();
+        let mut secretsres: Vec<Vec<F>> = Vec::new(); 
+        for _ in 0..n {
+            let mut bases: Vec<Vec::<Affine<SecpConfig>>> = Vec::new();
+            let mut comms: Vec::<Affine<SecpConfig>> = Vec::new();
+            let mut secrets: Vec<F> = Vec::new();
+            // note there are ixj bases:
+            for j in 0..ncomms {
+                let mut vectemp = Vec::new();
+                for i in 0..nbases {
+                    vectemp.push(
+                        affine_from_bytes_tai(&(j*nbases + i).to_be_bytes()));
+                }
+                bases.push(vectemp);
+            }
+            for _ in 0..nbases {
+                // (TODO make secrets determ. rand. as well?)
+                secrets.push(F::rand(rng));
+            }
+
+            for i in 0..ncomms {
+                comms.push(<ark_secp256k1::Affine as AffineRepr>::Group::msm_unchecked(
+                    &bases[i as usize], &secrets
+                ).into());
+            }
+            let keyimagebase = get_generators(b"test-keyimage");
+            let mut transcript = Transcript::new(&GENSCHNORR_PROTOCOL_LABEL);
+            proofsres.push(GenSchnorrProof::<Affine<SecpConfig>>::create(
+                &mut transcript,
+                &comms,
+                &secrets,
+                &bases,
+                keyimagebase,
+                b"test context label",
+                    b"test user string"
+            ));
+            basesres.push(bases);
+            commsres.push(comms);
+            secretsres.push(secrets);
+        }
+        (proofsres, basesres, commsres, secretsres)
+    }
+    #[test]
+    fn test_no_reuse(){
+        let mut rng = rand::thread_rng();
+        let (prfs, _, _, _) =
+        generate_rand_repr_proofs(10, 5, 4, &mut rng);
+        assert!(check_no_duplicate_keyimages_in_repr_proofs(&prfs).is_ok());
+
+    }
 
     #[test]
     fn gs_cases_basic() {
-        type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
+        let mut rng = rand::thread_rng();
+        //let mut rng = thread_rng();
+        let (prfs, bases, comms, _) =
+        generate_rand_repr_proofs(1, 5, 4, &mut rng);
 
-        use rand::thread_rng;
-        //use rand::Rng;
-        let mut rng = thread_rng();
-        // set number of bases and number of commitments
-        let numbases = 5i32;
-        let numcomms= 4i32;
-        let mut bases: Vec<Vec::<Affine<SecpConfig>>> = Vec::new();
-        let mut comms: Vec::<Affine<SecpConfig>> = Vec::new();
-        let mut secrets: Vec<F> = Vec::new();
-        // note there are ixj bases:
-        for j in 0..numcomms {
-            let mut vectemp = Vec::new();
-            for i in 0..numbases {
-                vectemp.push(
-                    affine_from_bytes_tai(&(j*numbases + i).to_be_bytes()));
-            }
-            bases.push(vectemp);
-        }
-        for _ in 0..numbases {
-            // (TODO make secrets determ. rand. as well?)
-            secrets.push(F::rand(&mut rng));
-        }
-
-        for i in 0..numcomms {
-            comms.push(<ark_secp256k1::Affine as AffineRepr>::Group::msm_unchecked(
-                &bases[i as usize], &secrets
-            ).into());
-        }
-        let keyimagebase = get_generators(b"test-keyimage");
         let mut transcript = Transcript::new(&GENSCHNORR_PROTOCOL_LABEL);
-        let prf = GenSchnorrProof::create(
-            &mut transcript,
-            &comms,
-            &secrets,
-            &bases,
-            keyimagebase,
-            b"test context label",
-                b"test user string"
-        );
-    
-        transcript = Transcript::new(&GENSCHNORR_PROTOCOL_LABEL);
-        assert!(prf.verify(&mut transcript,
-            &comms,
-            &bases,
+        assert!(prfs[0].verify(&mut transcript,
+            &comms[0],
+            &bases[0],
             b"test context label",
                 b"test user string").is_ok());
-        // it should not pass verification with a random commitment
-        // TODO
-    }
+        // it should not pass verification with invalid R values
+        let mut prf_invalid_R: GenSchnorrProof<Affine<SecpConfig>>=
+        prfs[0].clone();
+        prf_invalid_R.Rvec[0] =
+        <ark_secp256k1::Affine as AffineRepr>::Group::rand(
+            &mut rng).into_affine();
+        transcript = Transcript::new(&GENSCHNORR_PROTOCOL_LABEL);
+        assert!(prf_invalid_R.verify(&mut transcript,
+            &comms[0],
+            &bases[0],
+            b"test context label",
+                b"test user string").is_err());
+        // It should not pass validation with invalid sigma values
+        let mut prf_invalid_sigma:
+        GenSchnorrProof<Affine<SecpConfig>> =
+        prfs[0].clone();
+        prf_invalid_sigma.sigmavec[0] =
+        F::rand(&mut rng);
+        transcript = Transcript::new(&GENSCHNORR_PROTOCOL_LABEL);
+        assert!(prf_invalid_sigma.verify(&mut transcript,
+            &comms[0],
+            &bases[0],
+            b"test context label",
+                b"test user string").is_err());
 
+    }
 }
 

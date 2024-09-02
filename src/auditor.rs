@@ -35,7 +35,6 @@ extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
 
-use std::collections::HashSet;
 use std::error::Error;
 use std::iter::zip;
 use std::ops::{Mul, Add};
@@ -48,7 +47,8 @@ use ark_secp256k1::{Config as SecpConfig, Fq as SecpBase};
 use bulletproofs::r1cs::*;
 use merlin::Transcript;
 use relations::curve_tree::{CurveTree, SelRerandParameters, SelectAndRerandomizePath};
-use crate::generalschnorr::{GenSchnorrProof, GENSCHNORR_PROTOCOL_LABEL};
+use crate::generalschnorr::{GenSchnorrProof, GENSCHNORR_PROTOCOL_LABEL,
+    check_no_duplicate_keyimages_in_repr_proofs};
 use crate::sumrangeproof::{sum_range_proof, range_proof_sum_gadgets_verifier};
 use crate::autctverifier::verify_curve_tree_proof;
 use crate::utils::{get_generators, get_curve_tree_proof_from_curve_tree,
@@ -239,14 +239,9 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
         // we can check whether the published
         // key images are unique, which is a requirement
         // to prove that the same utxo is not reused:
-        let keyimages: Vec<Affine<P0>> = self.representation_proofs
-        .iter().map(|x| x.I).collect::<Vec<_>>();
-        let uniques_len = keyimages.iter()
-        .collect::<HashSet<&Affine<P0>>>()
-        .len();
-        if uniques_len != keyimages.len() {
-                return Err("Duplicate key images in representation proofs".into());
-        }
+        check_no_duplicate_keyimages_in_repr_proofs(
+            &self.representation_proofs)?;
+
         let m = self.blinded_commitment_list.len();
         for i in 0..m {
             // verify representation proof
