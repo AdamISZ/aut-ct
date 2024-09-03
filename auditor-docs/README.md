@@ -12,19 +12,29 @@ The utxos must be of taproot type, and the anonymity set is a corresponding key 
 
 The additional supporting document on [multirepresentation](./multirepresentation.pdf) details a sub-component of this proof, that can prove that a number of Pedersen commitments have the same ``representation'' (secret witness multipliers) with respect to different vectors of base points (or generators).
 
+Preparing keysets
+======
+
+**The keyset files used in proof of assets are different than the ones used in AUTCT (anonymous usage tokens)**. This is basically because the ``keys'' are really commitments; they encode both the public key of the utxo, and its value in satoshis.
+
+Because these files are different, we use **different file suffixes to distinguish them**. The files needed here should be called `*.pks` while the files used in AUTCT should be called `*.aks`.
+
+For this reason, there is a separate flag `audit` used in the tool `filter-utxos.py` in the subsidiary [repo](https://github.com/AdamISZ/aut-ct-test-cases); read more information about generating keysets [here](https://github.com/AdamISZ/aut-ct/blob/auditing/docs/utxo-keysets.md).
+
+
 Example usage
 ======
 
 Run the server exactly as for `aut-ct` functions detailed on the main page:
 
 ```
-target/release/autct -M serve -k mycontext:something.aks -n signet
+target/release/autct -M serve -k mycontext:something.pks -n signet
 ```
 
 But use the `auditprove` method from the client:
 
 ```
-target/release/autct -M auditprove -k mycontext:something.aks -n signet -H 127.0.0.1 -i some-privkeys.txt --audit-range-min 5000 --audit-range-exponent 12
+target/release/autct -M auditprove -k mycontext:something.pks -n signet -H 127.0.0.1 -i some-privkeys.txt --audit-range-min 5000 --audit-range-exponent 12
 ```
 
 First note the two new option flags ``--audit-range-min`` which corresponds to \(k\) in the description, and ``-audit-range-exponent`` which corresponds to \(n\). Second, the format of `some-privkeys.txt` is like this:
@@ -39,7 +49,7 @@ that is, it is pairs (raw WIF private key, value-in-sats) one per line, remember
 To verify an existing proof file, you need to know what ``audit-range-min`` and ``audit-range-exponent`` are being claimed (for now; this is actually in the proof serialization so it can be extracted), and run the `auditverify` method:
 
 ```
-target/release/autct -M auditverify -k mycontext:something.aks -n signet -H 127.0.0.1 -P some-proof.txt --audit-range-min 5000 --audit-range-exponent 12
+target/release/autct -M auditverify -k mycontext:something.pks -n signet -H 127.0.0.1 -P some-proof.txt --audit-range-min 5000 --audit-range-exponent 12
 ```
 
 If successful, the following will be printed:
@@ -49,5 +59,4 @@ Audit is valid! The utxos' total value is
 between 5000 and 9096 satoshis.
 ```
 
-For more details on how to generate correct "keyset" (really, commitment-set) files \*.aks, from signet or mainnet utxo dumps, see the `audit` flag in `filter-utxos.py` in the subsidiary [repo](https://github.com/AdamISZ/aut-ct-test-cases) and information about generating keysets [here](https://github.com/AdamISZ/aut-ct/blob/auditing/docs/utxo-keysets.md).
 
