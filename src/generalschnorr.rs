@@ -291,20 +291,19 @@ pub fn check_no_duplicate_keyimages_in_repr_proofs<C: AffineRepr>(
     -> Result<(), Box<dyn Error>>{
     let keyimages: Vec<C> = repr_proofs
         .iter().map(|x| x.I).collect::<Vec<_>>();
-        let uniques_len = keyimages.iter()
-        .collect::<HashSet<&C>>()
-        .len();
-        if uniques_len != keyimages.len() {
-                return Err("Duplicate key images in representation proofs".into());
-        }
-        Ok(())
+    let uniques_len = keyimages.iter()
+    .collect::<HashSet<&C>>()
+    .len();
+    if uniques_len != keyimages.len() {
+            return Err("Duplicate key images in representation proofs".into());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rand::rngs::ThreadRng;
-    use rand::thread_rng;
     extern crate hex;
     extern crate ark_secp256k1;
     use ark_ec::AffineRepr;
@@ -373,7 +372,12 @@ mod tests {
         let mut rng = rand::thread_rng();
         let (prfs, _, _, _) =
         generate_rand_repr_proofs(10, 5, 4, &mut rng);
-        assert!(check_no_duplicate_keyimages_in_repr_proofs(&prfs).is_ok());
+        assert!(check_no_duplicate_keyimages_in_repr_proofs(
+            &prfs).is_ok());
+        let mut dupprfs = prfs.clone();
+        dupprfs[1] = dupprfs[0].clone();
+        assert!(check_no_duplicate_keyimages_in_repr_proofs(
+            &dupprfs).is_err());
 
     }
 

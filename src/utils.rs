@@ -159,27 +159,20 @@ P0: SWCurveConfig<BaseField = F> + std::marker::Copy>(
             // TODO, also why doesn't the below map work?
             b.push(hex::decode(s).unwrap());
         }
-
-        //ark_ser_list.iter().map(|x|
-        //    match hex::decode(x){
-        //        Ok(y) => y,
-        //        Err(e) => return Err(e)
-        //    })
-        //   .collect();
-    let mut pubkeys = Vec::new();
-    for a in b{
-        let mut cursor = Cursor::new(a);
-        match Affine::<P0>::deserialize_with_mode(&mut cursor,
-            ark_serialize::Compress::Yes,
-            ark_serialize::Validate::Yes){
-            Ok(Q) => {
-                pubkeys.push(Q);
-            },
-            Err(_) => {println!("Invalid hex pubkey detected, ignoring.")}
-        };
+        let mut pubkeys = Vec::new();
+        for a in b{
+            let mut cursor = Cursor::new(a);
+            match Affine::<P0>::deserialize_with_mode(&mut cursor,
+                ark_serialize::Compress::Yes,
+                ark_serialize::Validate::Yes){
+                Ok(Q) => {
+                    pubkeys.push(Q);
+                },
+                Err(_) => {println!("Invalid hex pubkey detected, ignoring.")}
+            };
+        }
+        Ok(pubkeys)
     }
-    Ok(pubkeys)
-}
 
 /// Given a list of BIP340 encoded keys as hex string
 /// serializations, convert each one into a curve point
@@ -230,13 +223,16 @@ pub fn get_pubkey_leaves_hex<F: PrimeField,
                 P0: SWCurveConfig<BaseField = F>
                 + std::marker::Copy>(pubkey_file_path: &str)
                 -> Vec<Affine<P0>>{
-    // this whole section is clunky TODO
-    // (need to reverse each binary string, but reverse() is 'in place', hence loop,
-    // so the "TODO" is how to do that more elegantly)
+    // TODO return errors for failed reading
     let filestr:String = read_file_string(pubkey_file_path)
     .expect("my failure message");
     let hex_keys_vec = filestr.split_whitespace().collect::<Vec<_>>();
-    get_correct_pubkeys_from_ark_hex_list::<F, P0>(hex_keys_vec).unwrap()
+    if pubkey_file_path.ends_with(".aks"){
+        get_correct_pubkeys_from_bip340_hex_list(hex_keys_vec).unwrap()
+    }
+    else {
+        get_correct_pubkeys_from_ark_hex_list::<F, P0>(hex_keys_vec).unwrap()
+    }
 }
 
 pub fn create_permissible_points_and_randomnesses<
