@@ -34,10 +34,17 @@ target/release/autct -M serve -k mycontext:something.pks -n signet
 But use the `auditprove` method from the client:
 
 ```
-target/release/autct -M auditprove -k mycontext:something.pks -n signet -H 127.0.0.1 -i some-privkeys.txt --audit-range-min 5000 --audit-range-exponent 12
+target/release/autct -M auditprove -k mycontext:something.pks \
+-n signet -H 127.0.0.1 -i some-privkeys.txt \
+--audit-range-min 5000 --audit-range-exponent 12 \
+-u "Alice's more than 5K sats"
 ```
 
-First note the two new option flags ``--audit-range-min`` which corresponds to \(k\) in the description, and ``-audit-range-exponent`` which corresponds to \(n\). Second, the format of `some-privkeys.txt` is like this:
+First note the two new option flags ``--audit-range-min`` which corresponds to $k$ in the description, and ``-audit-range-exponent`` which corresponds to $n$.
+
+Second the argument ``-u`` is necessary here: it functions exactly as the "message" in a Schnorr signature, evidencing what is attested to. Otherwise, someone could take your proof of funds and use it to pretend they owned the money! One sensible thing to put as the "message" here might be a public key, over which you could sign.
+
+Thirdly, the format of `some-privkeys.txt` is like this:
 
 ```
 cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87Lc8ycuM4,5000
@@ -49,8 +56,10 @@ that is, it is pairs (raw WIF private key, value-in-sats) one per line, remember
 To verify an existing proof file, you need to know what ``audit-range-min`` and ``audit-range-exponent`` are being claimed (for now; this is actually in the proof serialization so it can be extracted), and run the `auditverify` method:
 
 ```
-target/release/autct -M auditverify -k mycontext:something.pks -n signet -H 127.0.0.1 -P some-proof.txt --audit-range-min 5000 --audit-range-exponent 12
+target/release/autct -M auditverify -k mycontext:something.pks -n signet -H 127.0.0.1 -P some-proof.txt --audit-range-min 5000 --audit-range-exponent 12 -u "Alice's more than 5K sats"
 ```
+
+Note that you need to use exactly the same message as `-u` here as in proving, also.
 
 If successful, the following will be printed:
 

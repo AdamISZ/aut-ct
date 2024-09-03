@@ -251,7 +251,8 @@ pub mod rpc {
                         values,
                         &pva.keyset_file_locs[0],
                         &pva.curve_trees[0],
-                        &pva.sr_params
+                        &pva.sr_params,
+                        &args.user_label
                     ).unwrap(); // todo Result not working?
                     //if prfres.is_err(){
                     //    resp.accepted = -2;
@@ -263,7 +264,8 @@ pub mod rpc {
                     //
                     let verifresult = prf.verify(&G, &J,
                         &pva.curve_trees[0], // assuming one is that OK? TODO
-                        &pva.sr_params);
+                        &pva.sr_params,
+                        &args.user_label);
                     if verifresult.is_err() {
                         resp.accepted = -2;
                         return Ok(resp);
@@ -617,7 +619,8 @@ pub mod rpc {
                 // uses one keyset in the definition, hence [0]:
                 let verifresult = prf.verify(&G, &J,
                         &pva.curve_trees[0],
-                        &pva.sr_params);
+                        &pva.sr_params,
+                        &verif_request.user_label);
                 if verifresult.is_err() {
                         resp.accepted = -3;
                         return Ok(resp);

@@ -109,7 +109,8 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
         // proof parameters:
         keyset: &str,
         curve_tree: &CurveTree<P0, P1>,
-        sr_params: &SelRerandParameters<P0, P1>
+        sr_params: &SelRerandParameters<P0, P1>,
+        user_string: &str
     ) -> Result<AuditProof<F, P0, P1>, Box<dyn Error>> {
         // 3: curve tree proof for each of the m commitments
         let mut curvetree_p0_proofs: Vec<R1CSProof<Affine<P0>>> = Vec::new();
@@ -210,7 +211,7 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
                 &basesvec,
                 keyimagebase,
                 // TODO labelling:
-                b"bloo",b"blah"));
+                b"bloo", user_string.as_bytes()));
         }
         // We now have a full set of AuditProof elements:
         Ok(AuditProof{
@@ -232,7 +233,8 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
     pub fn verify(
         &self, G: &Affine<P0>, J: &Affine<P0>,
         curve_tree: &CurveTree<P0, P1>,
-        sr_params: &SelRerandParameters<P0, P1>
+        sr_params: &SelRerandParameters<P0, P1>,
+        user_string: &str
     ) -> Result<(), Box<dyn Error>>
     {
         // Before verifying the ZK proofs,
@@ -260,7 +262,7 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
                 &vec![self.blinded_commitment_list[i], self.Q_comms[i]],
                 &basesvec,
                 b"bloo", // TODO labels
-                b"blah"
+                user_string.as_bytes()
             )?;
         }
         for i in 0..m {
