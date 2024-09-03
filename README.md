@@ -1,6 +1,8 @@
 Anonymous usage tokens from curve trees
 =====
 
+![Tests](https://github.com/AdamISZ/aut-ct/actions/workflows/ci.yaml/badge.svg)
+
 ### Table of Contents
 * [Introduction](#introduction)
 * [Caveat](#caveat)
