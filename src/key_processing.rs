@@ -77,8 +77,8 @@ pub fn create_fake_privkeys_values_files(num_privs: u64,
     let commitments = get_commitments_from_wif_and_sats(
         privkey_wifs.clone(), vec_all_values, &secp)?;
     
-    // Then write those to a *aks file with the given label.
-    let commsfilename = filelabel.to_owned() + ".aks";
+    // Then write those to a *pks file with the given label.
+    let commsfilename = filelabel.to_owned() + ".pks";
     write_keyset_file_from_commitments(commitments, &commsfilename)?;
 
     // Then form the list of (wif privkeys, values) for the assigned values.
