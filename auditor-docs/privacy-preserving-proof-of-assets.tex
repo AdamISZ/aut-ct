@@ -82,7 +82,7 @@ Given this, it's easier to understand the three categories of approaches taken t
 
 \subsection{Earlier work on the problem}
 
-The seminal work ``Provisions'' addresses the same ``proof of assets'' scenario, as well as ``proof of liabilities'' (specifically for asset custodians), but using only standard $\Sigma$-protocol techniques (including proof of commitment to bit representations). Thus it is the perhaps canonical example of category (1) in the list above. Hence it is probably impractical for very large anonymity sets. To quote the paper itself:
+The seminal work ``Provisions'' {[}\protect\hyperlink{anchor-1}{1}{]} addresses the same ``proof of assets'' scenario, as well as ``proof of liabilities'' (specifically for asset custodians), but using only standard $\Sigma$-protocol techniques (including proof of commitment to bit representations). Thus it is the perhaps canonical example of category (1) in the list above. Hence it is probably impractical for very large anonymity sets. To quote the paper itself:
 
 \begin{quote}
 Provisions scales linearly in proof size, construction and verification time with respect to its inputs: the proof of assets scales with the size of the anonymity set $\ldots$
@@ -318,9 +318,39 @@ TODO
 
 \section{Performance results}
 
-TODO
+\subsection{Proof size}
+
+The sample results in \ref{table:prfsize} do not include proof batching, hence the sizes vary with the size of the witness utxo set primarily. Note for example that the exponent, which is the value $n$ in the formula $k < \sum_i v_i > k + 2^n$, has either little, or no effect on the proof size which is helpful for proving larger integer ranges of satoshis.
+
+\vspace{5 pt}
+
+Note that it is specifically the curve tree proof that could be easily batched, and the range proof also with some work; the number of individual bulletproofs could be reduced from $3n$ to $2$ (in case of tree depth $2$, which isn't always optimal but usually close to optimal).
+
+\vspace{5 pt}
+
+Even without that optimization, the proof sizes are manageable for small numbers of utxos.
+
+\begin{table}[ht]
+\caption{Audit proof sizes in bytes}
+\centering
+\begin{tabular}{c c c c}
+\hline\hline
+\# utxos & anon set size & range exponent & Bytes \\ [0.5ex]
+\hline
+2 & 100 & 12 & 6888 \\
+2 & 100 & 24 & 6954 \\
+2 & 100 & 36 & 7020 \\
+1 & 350K & 18 & 3915 \\
+3 & 350K & 18 & 9861 \\
+7 & 350K & 18 & 21753 \\
+7 & 350K & 24 & 21753 \\ [1ex] % [1ex] adds vertical space
+\hline
+\end{tabular}
+\label{table:prfsize}
+\end{table}
 
 
+\pagebreak
 
 \hypertarget{references}{%
 \section[References]{\texorpdfstring{\protect\hypertarget{anchor-77}{}{}References}{References}}\label{references}}
