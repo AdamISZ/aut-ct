@@ -92,7 +92,7 @@ pub struct AutctConfig {
     #[arg(short('p'), long, required=false)]
     pub rpc_port: Option<i32>,
     /// Print additional information in the terminal
-    #[arg(short('v'), long, required = false)]
+    #[arg(long, required = false)]
     verbose: Option<bool>,
     /// Only required for prover, destination
     /// file for the binary string which is the proof
@@ -218,7 +218,100 @@ impl AutctConfig {
     }
 
     pub fn get_context_labels_and_keysets(self) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
+        if self.keysets.is_none(){
+            return Err("Null keysets".into());
+        }
         get_params_from_config_string(self.keysets.unwrap())
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    // Test for `get_params_from_config_string`
+    #[test]
+    fn test_get_params_from_config_string_valid() {
+        let input = "context1:keyset1,context2:keyset2".to_string();
+        let result = get_params_from_config_string(input).unwrap();
+        assert_eq!(result.0, vec!["context1".to_string(), "context2".to_string()]);
+        assert_eq!(result.1, vec!["keyset1".to_string(), "keyset2".to_string()]);
+    }
+
+    #[test]
+    fn test_get_params_from_config_string_invalid_format() {
+        let input = "context1keyset1,context2:keyset2".to_string(); // missing colon
+        let result = get_params_from_config_string(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_params_from_config_string_empty_input() {
+        let input = "".to_string();
+        let result = get_params_from_config_string(input);
+        assert!(result.is_err());
+    }
+
+    // Tests for `AutctConfig`
+    #[test]
+    fn test_autctconfig_default_values() {
+        let config = AutctConfig::default();
+        assert_eq!(config.mode, Some("newkey".to_string()));
+        assert_eq!(config.depth, Some(2));
+        assert_eq!(config.branching_factor, Some(1024));
+        assert_eq!(config.verbose, Some(true));
+        assert_eq!(config.audit_range_min, Some(100_000_000u64));
+    }
+
+    #[test]
+    fn test_autctconfig_build_with_defaults() {
+        // Ensure that the config can be built with default values.
+        let result = AutctConfig::build();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_autctconfig_command_line_parsing() {
+        // Simulate passing arguments from the command line
+        let args = vec![
+            "test-app", 
+            "-M", "prove", 
+            "-k", "context1:keyset1",
+            "-d", "4", 
+            "-b", "512",
+            "--verbose", "true",  
+            "-H", "localhost",
+            "-P", "test_proof_file"
+        ];
+        let config = AutctConfig::try_parse_from(args).unwrap();
+        assert_eq!(config.mode, Some("prove".to_string()));
+        assert_eq!(config.depth, Some(4));
+        assert_eq!(config.branching_factor, Some(512));
+        assert_eq!(config.verbose, Some(true));
+        assert_eq!(config.rpc_host, Some("localhost".to_string()));
+        assert_eq!(config.proof_file_str, Some("test_proof_file".to_string()));
+    }
+
+    #[test]
+    fn test_autctconfig_get_context_labels_and_keysets() {
+        let config = AutctConfig {
+            keysets: Some("context1:keyset1,context2:keyset2".to_string()),
+            ..AutctConfig::default()
+        };
+        let result = config.get_context_labels_and_keysets().unwrap();
+        assert_eq!(result.0, vec!["context1".to_string(), "context2".to_string()]);
+        assert_eq!(result.1, vec!["keyset1".to_string(), "keyset2".to_string()]);
+    }
+
+    #[test]
+    fn test_autctconfig_missing_keysets() {
+        let config = AutctConfig {
+            keysets: None,
+            ..AutctConfig::default()
+        };
+        let result = config.get_context_labels_and_keysets();
+        assert!(result.is_err());
+    }
 }
