@@ -99,8 +99,8 @@ pub fn read_file_string(filepath: &str) -> Result<String, Box<dyn Error>> {
     Ok(resp.trim_end().to_string())
 }
 
-pub fn write_file_string(filepath: &str, mut buf: Vec<u8>) -> () {
-    fs::write(filepath, &mut buf).expect("Failed to write to file");
+pub fn write_file_string(filepath: &str, buf: Vec<u8>) -> () {
+    fs::write(filepath, buf).expect("Failed to write to file");
 }
 
 pub fn write_file_string2(loc: PathBuf, mut buf: Vec<u8>) ->Result<(), std::io::Error> {
@@ -225,12 +225,13 @@ pub fn get_pubkey_leaves_hex<F: PrimeField,
                 -> Vec<Affine<P0>>{
     // TODO return errors for failed reading
     let filestr:String = read_file_string(pubkey_file_path)
-    .expect("my failure message");
+    .expect("Failed to read pubkey file");
+
     let hex_keys_vec = filestr.split_whitespace().collect::<Vec<_>>();
     if pubkey_file_path.ends_with(".aks"){
         get_correct_pubkeys_from_bip340_hex_list(hex_keys_vec).unwrap()
     }
-    else {
+    else { // current convention is ".pks", but not enforced for now
         get_correct_pubkeys_from_ark_hex_list::<F, P0>(hex_keys_vec).unwrap()
     }
 }

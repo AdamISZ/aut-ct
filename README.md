@@ -38,7 +38,7 @@ An initial draft of a workable protocol for "receive tokens in exchange for prov
 
 # Caveat
 
-**Everything here is completely experimental and not safe in any way** (not helped by the fact I am a neophyte in Rust!). Importantly, even the underlying Curve Trees code was *only* written as a benchmarking tool, and therefore even that is not safe to use in anything remotely resembling a production environment.
+**Everything here is completely experimental and not safe in any way**. Importantly, even the underlying Curve Trees code was *only* written as a benchmarking tool, and therefore even that is not safe to use in anything remotely resembling a production environment.
 
 If you choose to play around with this stuff for Bitcoin projects I suggest using signet for now.
 

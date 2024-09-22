@@ -46,7 +46,7 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
         convert_keys::<SecpBase,
         SecpConfig,
         SecqConfig>(fl.to_string(),
-         autctcfg.generators_length_log_2.unwrap()).unwrap();
+         autctcfg.generators_length_log_2.unwrap())?;
         let leaf_commitments = get_leaf_commitments(
             &(fl.to_string() + ".p"));
 
