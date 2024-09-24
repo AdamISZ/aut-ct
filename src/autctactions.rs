@@ -3,38 +3,15 @@
 extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
-use autct::key_processing::create_fake_privkeys_values_files;
-use autct::rpcclient;
-use autct::rpcserver;
-use autct::config::{AutctConfig, get_params_from_config_string};
-use autct::utils::write_file_string;
+use crate::key_processing::create_fake_privkeys_values_files;
+use crate::rpcclient;
+//use crate::rpcserver;
+use crate::config::{AutctConfig, get_params_from_config_string};
+use crate::utils::write_file_string;
 use std::io::Write;
 use std::error::Error;
 use base64::prelude::*;
-use autct::encryption::{encrypt, decrypt};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>>{
-    let autctcfg = AutctConfig::build()?;
-    match autctcfg.clone().mode.unwrap().as_str() {
-        "prove" => {return request_prove(autctcfg).await
-                    },
-        "verify" => {return request_verify(autctcfg).await},
-        "serve" => {return rpcserver::do_serve(autctcfg).await
-                    },
-        "newkeys" => {return request_create_keys(autctcfg).await},
-        "auditprove" => {return request_audit(autctcfg).await},
-        "auditverify" => {return request_audit_verify(autctcfg).await},
-        // this extra tool is really just for testing:
-        "encryptkey" => {return request_encrypt_key(autctcfg).await},
-        // extra tool for exporting the key:
-        "decryptkey" => {return request_decrypted_key(autctcfg).await},
-        // extra (undocumented) tool for creating test files:
-        "audittestgen" => {return create_test_data(autctcfg).await},
-        _ => {return Err("Invalid mode, must be 'prove', 'auditprove', 'serve', 'newkeys', 'encryptkey', 'decryptkey' or 'verify'".into())},
-
-    }
-}
+use crate::encryption::{encrypt, decrypt};
 
 /// An undocumented tool for creating test files.
 /// Note that this misuses config vars as follows:
@@ -46,7 +23,7 @@ async fn main() -> Result<(), Box<dyn Error>>{
 /// the proof, along with the value for each index, using colon
 /// separated pairs. For example:
 /// ./autct -M audittestgen -W 100 -l 2:5000,14:90000 -k mytestdata
-async fn create_test_data(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
+pub async fn create_test_data(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
     let filenameprefix = autctcfg.keysets.clone().unwrap();
     let numprivs = autctcfg.depth.clone().unwrap() as u64;
     let values_indices_str = autctcfg.rpc_host.clone().unwrap();
@@ -62,10 +39,10 @@ async fn create_test_data(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
 /// This is a tool for manual testing; users will always
 /// have privkeys stored in encrypted files. Hence
 /// there is no attempt to handle errors properly.
-async fn request_encrypt_key(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>  {
+pub async fn request_encrypt_key(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>  {
     let password = rpassword::prompt_password("Enter a password to encrypt the private key: ").unwrap();
     let privkey_file_str = autctcfg.privkey_file_str.clone().unwrap();
-    let plaintext_priv_wif = autct::utils::read_file_string(&privkey_file_str)?;
+    let plaintext_priv_wif = crate::utils::read_file_string(&privkey_file_str)?;
     let mut buf: Vec<u8> = Vec::new();
     write!(&mut buf, "{}", plaintext_priv_wif)?;
     let encrypted_data = encrypt(&buf, &password.as_bytes())?;
@@ -75,7 +52,7 @@ async fn request_encrypt_key(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>
 }
 
 // This tool is helpful to allow importing the key to a Bitcoin wallet
-async fn request_decrypted_key(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
+pub async fn request_decrypted_key(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
     let password = rpassword::prompt_password("Enter password to decrypt private key: ")?;
     let privkey_file_str = autctcfg.privkey_file_str.clone().unwrap();
     let encrypted_priv_wif = std::fs::read(&privkey_file_str)?;
@@ -85,7 +62,7 @@ async fn request_decrypted_key(autctcfg: AutctConfig) -> Result<(), Box<dyn Erro
     Ok(())
 }
 
-async fn request_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
+pub async fn request_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>> {
     // This requires interaction from user: give a password on the command line:
     let password = rpassword::prompt_password("Enter a password to encrypt the new private key: ").unwrap();
     let res = rpcclient::createkeys(autctcfg, password).await;
@@ -109,7 +86,7 @@ async fn request_create_keys(autctcfg: AutctConfig) ->Result<(), Box<dyn Error>>
     Ok(())
 }
 
-async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
+pub async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
     let res = rpcclient::verify(autctcfg).await;
     match res {
         Ok(rest) => {
@@ -132,27 +109,40 @@ async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn request_audit_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+fn print_and_return(s: &str) -> Result<String, Box<dyn Error>>{
+    println!("{}", s);
+    Ok(s.to_string())
+}
+
+pub async fn request_audit_verify(autctcfg: AutctConfig) -> Result<String, Box<dyn Error>>{
     let res = rpcclient::auditverify(autctcfg.clone()).await;
     match res {
         Ok(rest) => {
-            let satmin = autctcfg.audit_range_min.unwrap();
-            let satmax = satmin + 2u64.pow(autctcfg.audit_range_exponent.unwrap() as u32);
+            // Note that we are guaranteed non-nonsense values
+            // for these fields because this is a non-Err response:
+            let satmin = rest.audit_range_min;
+            let satmax = satmin + 2u64.pow(rest.audit_range_exponent as u32);
             match rest.accepted {
-                1 => println!("Audit is valid! The utxos' total value is between {} and {} satoshis.",
-                 satmin, satmax),
-                -1 => println!("Invalid encoding of proof, should be base64."),
-                -2 => println!("Invalid proof serialization"),
-                -3 => println!("Proof of assets in range is rejected, proof invalid."),
-                _ => println!("Unrecognized error code from server?"),
+                1 => {let s = format!("Audit is valid! The utxos' total value is between {} and {} satoshis.",
+                 satmin, satmax);
+                 println!("{}", s);
+                 return Ok(s)},
+                -1 => {let s = "Invalid encoding of proof, should be base64.";
+                return print_and_return(s);},
+                -2 => {let s = "Invalid proof serialization";
+                return print_and_return(s);},
+                -3 => {let s = "Proof of assets in range is rejected, proof invalid.";
+                return print_and_return(s);},
+                _ => {let s = "Unrecognized error code from server?";
+                return print_and_return(s);},
             }
         },
-        Err(_) => return Err("Verificatoin request processing failed.".into()),
+        Err(e) => return Err(
+            format!("{}", e).into()),
     };
-    Ok(())
-
 }
-async fn request_audit(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+
+pub async fn request_audit(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let res = rpcclient::auditprove(
         autctcfg.clone()).await;
     let required_proof_destination = autctcfg.clone()
@@ -185,7 +175,7 @@ async fn request_audit(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     Ok(())
 }
 
-async fn request_prove(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
+pub async fn request_prove(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     // This requires interaction from user: give a password on the command line:
     let password = rpassword::prompt_password("Enter a password to decrypt the private key: ").unwrap();
     let required_proof_destination = autctcfg.clone().proof_file_str.unwrap();

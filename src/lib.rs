@@ -3,6 +3,7 @@
 pub mod peddleq;
 pub mod utils;
 pub mod autctverifier;
+pub mod autctactions;
 pub mod config;
 pub mod keyimagestore;
 pub mod rpcclient;
@@ -53,7 +54,7 @@ pub mod rpc {
     use crate::config::get_params_from_config_string;
 
     use super::*;
-    use std::sync::{Arc, Mutex};
+    use std::{sync::{Arc, Mutex}, u64};
     use ark_ff::BigInteger256;
     use relations::curve_tree::{CurveTree, SelRerandParameters};
 
@@ -569,14 +570,14 @@ pub mod rpc {
         pub depth: i32,
         pub generators_length_log_2: u8,
         pub user_label: String,
-        pub audit_range_min: u64, //k
-        pub audit_range_exponent: usize, //n
     }
     #[derive(Serialize, Deserialize, Debug)]
     pub struct RPCAuditProofVerifyResponse {
         pub keyset: String,
         pub context_label: String,
-        pub accepted: i32,   
+        pub accepted: i32,
+        pub audit_range_min: u64, //k
+        pub audit_range_exponent: usize, //n 
     }
 
     pub struct RPCAuditProofVerifier {
@@ -597,6 +598,8 @@ pub mod rpc {
                     keyset: verif_request.keyset.clone(),
                     context_label: verif_request.context_label.clone(),
                     accepted: -100,
+                    audit_range_min: u64::MAX,
+                    audit_range_exponent: 0usize,
                 };
                 let decoded_proof = match BASE64_STANDARD
                 .decode(verif_request.proof) {
@@ -615,8 +618,18 @@ pub mod rpc {
                             return Ok(resp)
                         }
                 };
+                // we fill in the audit range values that were
+                // serialized into the proof here,
+                // as they are part of the claim, whether proven or not:
+                resp.audit_range_min = prf.k;
+                resp.audit_range_exponent = prf.n;
                 // we assume that audit mode only ever
-                // uses one keyset in the definition, hence [0]:
+                // uses one keyset in the definition, hence [0].
+                // Notice that here we aren't even bothering
+                // to check that the keyset the client asked for
+                // matches the one the server is serving, so that's
+                // a TODO as the client might not have any idea why
+                // their proofs aren't verifying!
                 let verifresult = prf.verify(&G, &J,
                         &pva.curve_trees[0],
                         &pva.sr_params,
