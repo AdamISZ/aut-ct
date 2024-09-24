@@ -31,17 +31,20 @@ Result<RPCAuditProofVerifyResponse, Box<dyn Error>>{
         context_label,
         depth: autctcfg.depth.unwrap(),
         generators_length_log_2: autctcfg.generators_length_log_2.unwrap(),
-        audit_range_min: autctcfg.audit_range_min.unwrap(),
-        audit_range_exponent: autctcfg.audit_range_exponent.unwrap(),
+        // the request does *not* include the audit range, which
+        // is hardcoded into the proof serialization
         proof: BASE64_STANDARD.encode(buf),
     };
-    let mut client = Client::dial_websocket(&addr).await.unwrap();
+    let mut client = Client::dial_websocket(&addr).await?;
     client.set_default_timeout(std::time::Duration::from_secs(3));
-    let result: RPCAuditProofVerifyResponse = client
+    let result = client
     .r_p_c_audit_proof_verifier().auditverify(req)
-    .await
-    .unwrap();
-    Ok(result)  
+    .await;
+    // constructed explicitly to convert the Err type:
+    match result {
+        Ok(r) => return Ok(r),
+        Err(e) => return Err(e.into()),
+    } 
 }
 pub async fn verify(autctcfg: AutctConfig) -> Result<RPCProofVerifyResponse, Box<dyn Error>>{
     let rpc_port = autctcfg.rpc_port;

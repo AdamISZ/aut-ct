@@ -57,7 +57,6 @@ use crate::utils::{get_generators, get_curve_tree_proof_from_curve_tree,
 pub const J_GENERATOR_LABEL: &[u8] = b"auditor-J";
 pub const H_GENERATOR_LABEL: &[u8] = b"auditor-H";
 
-
 pub fn get_audit_generators() -> (Affine<SecpConfig>, Affine<SecpConfig>){
     let G = SecpConfig::GENERATOR;
     let J = get_generators::<SecpBase, SecpConfig>(J_GENERATOR_LABEL);

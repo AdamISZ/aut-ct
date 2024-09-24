@@ -31,6 +31,8 @@ Run the server exactly as for `aut-ct` functions detailed on the main page:
 target/release/autct -M serve -k mycontext:something.pks -n signet
 ```
 
+(note: the context string "mycontext" is ignored for the auditing function; it can be anything, like "abcdef:..", but it must be there).
+
 But use the `auditprove` method from the client:
 
 ```
