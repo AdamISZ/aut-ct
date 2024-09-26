@@ -32,6 +32,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install GTK on Ubuntu
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt update && sudo apt install -y libgtk-3-dev
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           # (required) Comma-separated list of binary names (non-extension portion of filename) to build and upload.
