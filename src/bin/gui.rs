@@ -2,10 +2,11 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use eframe::egui::{self, RichText, Vec2, Window};
+use eframe::egui::{self, Color32, Ui, Pos2, RichText, Vec2, Window};
 use tokio::runtime::Runtime;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use tokio::time::Duration;
 use rfd::FileDialog;
 use autct::autctactions::request_audit_verify;
 use autct::config::AutctConfig;
@@ -25,10 +26,18 @@ struct AutctVerifierApp {
     is_verif_loading: bool,
     verif_result: Arc<Mutex<Option<String>>>,
     verif_runtime: Arc<Runtime>,
+    server_state: Arc<Mutex<ServerState>>,
 }
 
 #[derive(Debug)]
 struct CustomError(String);
+
+#[derive(PartialEq, Clone, Copy)]
+enum ServerState {
+    NotStarted,
+    Running,
+    Ready,
+}
 
 #[tokio::main]
 async fn main() -> eframe::Result {
@@ -88,6 +97,64 @@ impl AutctVerifierApp {
             *result.lock().unwrap() = Some(res);
         });
     }
+
+    /// Starts the verification server in the background
+    /// by calling std::process:Command
+    fn start_server(&self) {
+        let server_state = Arc::clone(
+            &self.server_state);
+        
+        // Spawn a new thread to run the process
+        thread::spawn(move || {
+            {
+                let mut state = server_state.lock().unwrap();
+                *state = ServerState::Running;
+            }
+
+            // Simulate running the process
+            // Replace this with the actual command,
+            // `std::process::Command::new(
+            // "./autct -k dummycontext:keysetfile -n network")`
+            thread::sleep(Duration::from_secs(5));
+
+            // Need some kind of hook to trigger this independently,
+            // because the above process is a daemon not a batch process.
+            {
+                let mut state = server_state.lock().unwrap();
+                *state = ServerState::Ready;
+            }
+        });
+    }
+
+    fn update_dot(&mut self, ctx: &egui::Context, dot_pos: &Pos2, dot_radius: f32) {
+        // Determine the color of the dot based on the verification
+        // server(called in the background)'s state:
+        let process_state = *self.server_state.lock().unwrap();
+        let dot_color = match process_state {
+            ServerState::NotStarted => Color32::BLUE,
+            ServerState::Running => Color32::YELLOW,
+            ServerState::Ready => Color32::GREEN,
+        };
+        egui::Area::new("circle_area".into())
+        .fixed_pos(*dot_pos)
+        .show(ctx, |ui| {
+        // Create an interactable area using `ui.allocate_response`
+        let response = ui.allocate_response(
+            Vec2::splat(dot_radius * 2.0),
+            egui::Sense::click(),
+        );
+
+        // Draw the circle
+        let painter = ui.painter();
+        painter.circle_filled(*dot_pos, dot_radius, dot_color);
+
+        // Handle click on the circle
+        if response.clicked() && process_state == ServerState::NotStarted {
+            println!("Circle clicked! Starting the process...");
+            self.start_server();
+        }
+    });
+    }
 }
 
 impl Default for AutctVerifierApp {
@@ -103,6 +170,7 @@ impl Default for AutctVerifierApp {
             is_verif_loading: false,
             verif_result: Arc::new(Mutex::new(None)),
             verif_runtime: Arc::new(Runtime::new().unwrap()),
+            server_state: Arc::new(Mutex::new(ServerState::NotStarted)),
         }
     }
 }
@@ -112,8 +180,24 @@ impl eframe::App for AutctVerifierApp {
         // Point of discussion: I think dark mode will work
         // a little better than light:
         //ctx.set_visuals(egui::Visuals::light());
-        let available_height = ctx.available_rect().height();
 
+        // GUI does not respond to updates unless
+        // user acts (e.g. mouse events), by default,
+        // so force it:
+        ctx.request_repaint();
+
+        // Calculate the correct center and radius
+        // for the dot, and its reaction area:
+        let screen_rect = ctx.screen_rect();
+        let dot_pos = Pos2::new(screen_rect.max.x - 20.0,
+             screen_rect.max.y - 20.0);
+        // This is very close to the edge?:
+        let dot_radius = 15.0;
+        self.update_dot(ctx, &dot_pos, dot_radius);
+
+        // bottom section contains verification action and result.
+        // use 25% of height:
+        let available_height = ctx.available_rect().height();
         egui::TopBottomPanel::bottom("actionpanel")
             .min_height(available_height * 0.25)
             .show(ctx, |ui| {
