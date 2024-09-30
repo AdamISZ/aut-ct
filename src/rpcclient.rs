@@ -9,6 +9,24 @@ use crate::rpc::*;
 use std::error::Error;
 use std::fs;
 
+pub async fn echo(autctcfg: &AutctConfig) -> Result<RPCEchoResponse, Box<dyn Error>> {
+    let rpc_port = autctcfg.rpc_port;
+    let host: &str= &autctcfg.rpc_host.clone().unwrap();
+    let port_str: &str = &rpc_port.unwrap().to_string();
+    let addr: String = format!("ws://{}:{}", host, port_str);
+    let req = RPCEchoRequest{msg: "test".to_string()};
+    let mut client = Client::dial_websocket(&addr).await?;
+    client.set_default_timeout(std::time::Duration::from_secs(3));
+    let result = client
+    .r_p_c_echo().echo(req)
+    .await;
+    // constructed explicitly to convert the Err type:
+    match result {
+        Ok(r) => return Ok(r),
+        Err(e) => return Err(e.into()),
+    } 
+
+}
 pub async fn auditverify(autctcfg: AutctConfig) ->
 Result<RPCAuditProofVerifyResponse, Box<dyn Error>>{
     let rpc_port = autctcfg.rpc_port;

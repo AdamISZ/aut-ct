@@ -114,6 +114,14 @@ fn print_and_return(s: &str) -> Result<String, Box<dyn Error>>{
     Ok(s.to_string())
 }
 
+pub async fn request_echo(autctcfg: &AutctConfig) -> Result<String, Box<dyn Error>> {
+    let res = rpcclient::echo(autctcfg).await;
+    match res {
+        Ok(x) => Ok(x.response_msg),
+        Err(_) => Err("Failed echo call".into())
+    }
+}
+
 pub async fn request_audit_verify(autctcfg: AutctConfig) -> Result<String, Box<dyn Error>>{
     let res = rpcclient::auditverify(autctcfg.clone()).await;
     match res {

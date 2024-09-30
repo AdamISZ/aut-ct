@@ -2,14 +2,20 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use eframe::egui::{self, Color32, Ui, Pos2, RichText, Vec2, Window};
+use eframe::egui::{self, Color32, Pos2, RichText, Vec2, Window};
 use tokio::runtime::Runtime;
-use std::sync::{Arc, Mutex};
+use std::process::Stdio;
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use tokio::time::Duration;
 use rfd::FileDialog;
-use autct::autctactions::request_audit_verify;
+use autct::autctactions::{request_audit_verify, request_echo};
 use autct::config::AutctConfig;
+
+struct Wrapper {
+    wrapped_app: Arc<RwLock<AutctVerifierApp>>,
+}
+
 
 struct AutctVerifierApp {
     autctcfg: Option<AutctConfig>,
@@ -22,9 +28,16 @@ struct AutctVerifierApp {
     proof_file: Arc<Mutex<Option<String>>>,
     keyset_file: Arc<Mutex<Option<String>>>,
     show_verif_modal: bool,
+    // These three booleans control the showing
+    // of popups:
+    show_verifres_modal: bool,
     show_conn_modal: bool,
     is_verif_loading: bool,
+    // this allows accessing the response
+    //from the RPC server across threads:
     verif_result: Arc<Mutex<Option<String>>>,
+    // this remembers the last RPC response we saw:
+    last_verif_result: Option<String>,
     verif_runtime: Arc<Runtime>,
     server_state: Arc<Mutex<ServerState>>,
 }
@@ -41,14 +54,53 @@ enum ServerState {
 
 #[tokio::main]
 async fn main() -> eframe::Result {
-    let mut myapp: AutctVerifierApp = AutctVerifierApp::default();
+    // make a read-only copy of the app for the
+    // monitoring thread:
+    let mut myapp  = AutctVerifierApp::default();
     myapp.try_load_autctcfg();
+    let myapplock = Arc::new(RwLock::new(myapp));
+    let shared_myapplock = Arc::clone(&myapplock);
+
+    thread::spawn(move || {
+        loop {
+            // the rpc requests are async but we
+            // want to wait in this thread, so `block_on`:
+            let lockres = shared_myapplock.try_read();
+            if !lockres.is_err() {
+                let app_for_reading = lockres.unwrap();
+                // println-s here for now to sanity check the monitoring echo RPC
+                // calls are behaving as expected:
+                if !app_for_reading.autctcfg.is_none() {
+                    println!("autctcfg was not none in the monitoring thread");
+                    let rt = Runtime::new().unwrap();
+                    let res = rt.block_on(
+                        request_echo(&app_for_reading.autctcfg.as_ref().unwrap()));
+                    println!("Request echo method returned");
+                    match res {
+                        Ok(_) => {println!("Echo successful");
+                                let mut state = app_for_reading
+                                .server_state.lock().unwrap();
+                                *state = ServerState::Ready;
+                                break;},
+                    Err(_) => {println!("Echo call returned an error");}
+                    } // end match
+                } // end autctcfg none check
+                else {
+                    println!("in monitoring thread, autctcfg was none");
+                }
+            } // end check for lock
+            // Sleep for 1 second before the next check
+            thread::sleep(Duration::from_secs(1));
+        } // end loop
+    }); // end thread
+    let wrapper = Wrapper{ wrapped_app: Arc::clone(&myapplock)};
     eframe::run_native(
         "Bitcoin ownership auditor",
         eframe::NativeOptions::default(),
-        Box::new(|_cc| Ok(Box::new(myapp))),
+        Box::new(|_cc| Ok(Box::new(wrapper))),
     )
 }
+
 
 impl AutctVerifierApp {
     fn try_load_autctcfg(&mut self) {
@@ -61,6 +113,7 @@ impl AutctVerifierApp {
     }
 
     fn check_cfg_data(&self) -> Result<AutctConfig, CustomError> {
+        println!("Starting check cfg data");
         let mut cfg = self.autctcfg
         .clone().ok_or_else(|| CustomError("Failed to load config".to_string()))?;
         cfg.proof_file_str = Some(self.proof_file
@@ -74,6 +127,7 @@ impl AutctVerifierApp {
             .clone().ok_or_else(
             || CustomError("Failed to load signature message".to_string()))?);
         cfg.bc_network = Some(self.network.clone());
+        println!("Finishing check cfg data ok");
         Ok(cfg)
     }
 
@@ -88,9 +142,9 @@ impl AutctVerifierApp {
         }
     }
 
-    fn spawn_verifier(&mut self, result: Arc<Mutex<Option<String>>>) {
+    fn spawn_verifier(&mut self) {
         self.is_verif_loading = true;
-        let result = Arc::clone(&result);
+        let result = Arc::clone(&self.verif_result);
         let cfgclone = self.autctcfg.clone().unwrap();
         self.verif_runtime.spawn(async move {
             let res = AutctVerifierApp::verify(cfgclone).await;
@@ -103,32 +157,35 @@ impl AutctVerifierApp {
     fn start_server(&self) {
         let server_state = Arc::clone(
             &self.server_state);
-        
+        let keyset = self.autctcfg.clone().unwrap().keysets.unwrap();
+        let network = self.autctcfg.clone().unwrap().bc_network.unwrap();    
         // Spawn a new thread to run the process
         thread::spawn(move || {
-            {
-                let mut state = server_state.lock().unwrap();
-                *state = ServerState::Running;
-            }
 
-            // Simulate running the process
-            // Replace this with the actual command,
-            // `std::process::Command::new(
-            // "./autct -k dummycontext:keysetfile -n network")`
-            thread::sleep(Duration::from_secs(5));
-
-            // Need some kind of hook to trigger this independently,
-            // because the above process is a daemon not a batch process.
-            {
                 let mut state = server_state.lock().unwrap();
-                *state = ServerState::Ready;
-            }
+                *state = ServerState::NotStarted;
+
+
+            // Expected to take a while
+            // TODO: expect just crashes; ideally want to show a prompt
+            // that server startup failed with advice on how to fix it:
+            std::process::Command::new(
+                "./autct").arg("-k").arg(keyset).arg("-n").arg(
+                network)
+            .stderr(Stdio::null())
+            .stdout(Stdio::null())
+            .spawn().expect("Failed to start autct process in background.");
+            // Running means the server is processing the data
+            // but not yet serving on the port:
+            *state = ServerState::Running;
         });
     }
 
-    fn update_dot(&mut self, ctx: &egui::Context, dot_pos: &Pos2, dot_radius: f32) {
+    fn update_dot(&mut self, ctx: &egui::Context,
+        dot_pos: &Pos2, dot_radius: f32) {
         // Determine the color of the dot based on the verification
         // server(called in the background)'s state:
+        //println!("Got into update dot");
         let process_state = *self.server_state.lock().unwrap();
         let dot_color = match process_state {
             ServerState::NotStarted => Color32::BLUE,
@@ -167,15 +224,17 @@ impl Default for AutctVerifierApp {
             keyset_file: Arc::new(Mutex::new(None)),
             show_verif_modal: false,
             show_conn_modal: false,
+            show_verifres_modal: false,
             is_verif_loading: false,
             verif_result: Arc::new(Mutex::new(None)),
+            last_verif_result: None,
             verif_runtime: Arc::new(Runtime::new().unwrap()),
             server_state: Arc::new(Mutex::new(ServerState::NotStarted)),
         }
     }
 }
 
-impl eframe::App for AutctVerifierApp {
+impl eframe::App for Wrapper {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Point of discussion: I think dark mode will work
         // a little better than light:
@@ -186,6 +245,8 @@ impl eframe::App for AutctVerifierApp {
         // so force it:
         ctx.request_repaint();
 
+        // get handle to the wrapped object (which is the actual "app"):
+        let mut state = self.wrapped_app.write().unwrap();
         // Calculate the correct center and radius
         // for the dot, and its reaction area:
         let screen_rect = ctx.screen_rect();
@@ -193,73 +254,112 @@ impl eframe::App for AutctVerifierApp {
              screen_rect.max.y - 20.0);
         // This is very close to the edge?:
         let dot_radius = 15.0;
-        self.update_dot(ctx, &dot_pos, dot_radius);
 
-        // bottom section contains verification action and result.
-        // use 25% of height:
+        state.update_dot(ctx, &dot_pos, dot_radius);
+
+        // bottom section of window contains verification action and result.
         let available_height = ctx.available_rect().height();
         egui::TopBottomPanel::bottom("actionpanel")
             .min_height(available_height * 0.25)
             .show(ctx, |ui| {
                 ui.set_enabled(!(
-                    self.show_verif_modal || self.show_conn_modal));
+                    state.show_verif_modal || state.show_conn_modal || state.show_verifres_modal));
                 if ui.add_sized([200.0, 60.0],
                     egui::Button::new(RichText::new(
                         "VERIFY").size(30.0).strong())).clicked() {
                     let newcfg =
-                    self.check_cfg_data();
+                    state.check_cfg_data();
                     if newcfg.is_err() {
-                        self.show_verif_modal = true;
+                        state.show_verif_modal = true;
                     } else {
-                        self.autctcfg = Some(newcfg.unwrap());
-                        self.spawn_verifier(Arc::clone(
-                            &self.verif_result));
+                        // if the settings in the GUI passed all
+                        // sanity checks, we can update the config
+                        // object and then run verification.
+                        state.autctcfg = Some(newcfg.unwrap());
+                        state.spawn_verifier();
                     }
                 }
+                // The mut 'guard' variable allows us to read
+                // the verif_result string and then figure out if
+                // we need to show the Connection error dialog.
+                // we limit the scope of this mutable borrow:
+                let mut need_conn_modal = false;
+                let mut need_verifres_modal = false;
+                let mut temp_lastverifres: Option<String> = None;
+                {
                 let mut guard =
-                self.verif_result.lock().unwrap();
+                state.verif_result.lock().unwrap();
                 if let Some(ref mut res) = *guard {
-                        if res == "Connection error" && !self.show_conn_modal {
-                            self.show_conn_modal = true;
+                        if res == "Connection error" && !state.show_conn_modal {
+                            need_conn_modal = true;
                         }
                         else {
-                            // successfully received a verification response
-                            // (where 'success' includes a failed verification)
-                            ui.label(RichText::new(
-                                res.clone()).size(24.0).strong());
+                            need_verifres_modal = true;
+                            temp_lastverifres = Some(res.clone());
                         }
-                        if self.show_conn_modal {
-                            Window::new("Connection error")
+                }
+                // This allows us to delete the verification
+                // result String, so that we don't
+                // constantly reactivate the connection error
+                // modal window by detecting it:
+                *guard = None;
+                }
+                // update the state with the temp vars
+                // created while accessing the lock:
+                if !temp_lastverifres.is_none() {
+                    state.last_verif_result = temp_lastverifres.clone();
+                }
+                // these state vars are set to false when
+                // the modal dialog "Close" is clicked.
+                // We only want a one-way latch to set them 'true'
+                // if the above code was executed:
+                if need_conn_modal{
+                    state.show_conn_modal = true;
+                }
+                if need_verifres_modal {
+                    state.show_verifres_modal = true;
+                }
+                if state.show_verifres_modal {
+                Window::new("Verification result")
                             .collapsible(false)
                             .resizable(false)
                             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO) 
                             .show(ctx, |ui| {
-                                ui.label("Failed to connect to the verification server.");
-                                ui.add_space(30.0);
-                                ui.label("Check the rpc host and port settings\
-                                , and wait for the verification server to start up,\
-                                which can take a few minutes for very large keyset files.");
+                                ui.label(RichText::new(
+                                    state.last_verif_result.clone().unwrap()).size(24.0).strong());
                                 ui.add_space(15.0);
                                 if ui.button("Close").clicked() {
-                                    self.show_conn_modal = false;
-                                    // This allows us to delete the verification
-                                    // result String, so that we don't
-                                    // constantly reactivate this modal window
-                                    // by detecting it:
-                                    *guard = None;
+                                    state.show_verifres_modal = false;
                                 }
                             });
                         }
-                    }
-            });
-              egui::CentralPanel::default().show(ctx, |ui| {
+                if state.show_conn_modal {
+                        Window::new("Connection error")
+                        .collapsible(false)
+                        .resizable(false)
+                        .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO) 
+                        .show(ctx, |ui| {
+                            ui.label("Failed to connect to the verification server.");
+                            ui.add_space(30.0);
+                            ui.label("Check the rpc host and port settings\
+                            , and wait for the verification server to start up,\
+                            which can take a few minutes for very large keyset files.");
+                            ui.add_space(15.0);
+                            if ui.button("Close").clicked() {
+                                state.show_conn_modal = false;
+                            }
+                        });
+                }
+        });
+        egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.set_enabled(!(self.show_verif_modal || self.show_conn_modal));
+                //println!("Starting the central panel paint");
+                ui.set_enabled(!(state.show_verif_modal || state.show_conn_modal || state.show_verifres_modal));
                 ui.label(RichText::new(
                     "Choose keyset (.pks) file:").size(28.0).strong());
                 if ui.add_sized([150.0, 40.0],
                      egui::Button::new("Open File")).clicked() {
-                    let selected_file = Arc::clone(&self.keyset_file);
+                    let selected_file = Arc::clone(&state.keyset_file);
                     thread::spawn(move || {
                         if let Some(path) = FileDialog::new().pick_file() {
                             let mut selected_file = selected_file.lock().unwrap();
@@ -268,13 +368,13 @@ impl eframe::App for AutctVerifierApp {
                     });
                 }
 
-                if let Some(file) = &*self.keyset_file.lock().unwrap() {
+                if let Some(file) = &*state.keyset_file.lock().unwrap() {
                     ui.label(format!("Selected file: {}", file));
                 }
 
                 ui.label(RichText::new("Enter signature message:").size(28.0).strong());
 
-                let mut temp_message = self.sigmessage.clone().unwrap_or_default();
+                let mut temp_message = state.sigmessage.clone().unwrap_or_default();
 
                 ui.add_sized([500.0, 40.0], egui::TextEdit::singleline(
                     &mut temp_message)
@@ -285,22 +385,22 @@ impl eframe::App for AutctVerifierApp {
                     // window background for contrast?:
 
                 if temp_message.is_empty() {
-                    self.sigmessage = None;
+                    state.sigmessage = None;
                 } else {
-                    self.sigmessage = Some(temp_message);
+                    state.sigmessage = Some(temp_message);
                 }
 
                 ui.label(RichText::new("Choose network:").size(28.0).strong());
 
-                ui.radio_value(&mut self.network, "bitcoin".to_string(), "Bitcoin");
-                ui.radio_value(&mut self.network, "signet".to_string(), "Signet");
-                ui.radio_value(&mut self.network, "regtest".to_string(), "Regtest");
+                ui.radio_value(&mut state.network, "bitcoin".to_string(), "Bitcoin");
+                ui.radio_value(&mut state.network, "signet".to_string(), "Signet");
+                ui.radio_value(&mut state.network, "regtest".to_string(), "Regtest");
 
-                ui.label(format!("Selected network: {:?}", self.network));
+                ui.label(format!("Selected network: {:?}", state.network));
 
                 ui.label(RichText::new("Choose proof file:").size(28.0).strong());
                 if ui.add_sized([150.0, 40.0], egui::Button::new("Open File")).clicked() {
-                    let selected_file = Arc::clone(&self.proof_file);
+                    let selected_file = Arc::clone(&state.proof_file);
                     thread::spawn(move || {
                         if let Some(path) = FileDialog::new().pick_file() {
                             let mut selected_file = selected_file.lock().unwrap();
@@ -309,11 +409,10 @@ impl eframe::App for AutctVerifierApp {
                     });
                 }
 
-                if let Some(file) = &*self.proof_file.lock().unwrap() {
+                if let Some(file) = &*state.proof_file.lock().unwrap() {
                     ui.label(format!("Selected file: {}", file));
                 }
-
-                if self.show_verif_modal {
+                if state.show_verif_modal {
                     Window::new("Missing data")
                         .collapsible(false)
                         .resizable(false)
@@ -321,18 +420,18 @@ impl eframe::App for AutctVerifierApp {
                         .show(ctx, |ui| {
                             ui.label(RichText::new("Fill out these fields:").size(22.0).strong());
                             ui.add_space(30.0);
-                            if self.sigmessage.is_none() {
+                            if state.sigmessage.is_none() {
                                 ui.label("Signature message");
                             }
-                            if self.proof_file.lock().unwrap().is_none() {
+                            if state.proof_file.lock().unwrap().is_none() {
                                 ui.label("Proof file location");
                             }
-                            if self.keyset_file.lock().unwrap().is_none() {
+                            if state.keyset_file.lock().unwrap().is_none() {
                                 ui.label("Keyset file location (*.pks)");
                             }
                             ui.add_space(15.0);
                             if ui.button("Close").clicked() {
-                                self.show_verif_modal = false;
+                                state.show_verif_modal = false;
                             }
                         });
                 }

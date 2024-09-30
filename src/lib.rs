@@ -562,6 +562,31 @@ pub mod rpc {
                 }
             }
 
+    // The request is just a message that
+    // a caller can use to distinguish different calls
+    #[derive(Serialize, Deserialize)]
+    pub struct RPCEchoRequest {
+        pub msg: String,
+    }
+    // The response just adds the "autct-ok"
+    // response to the unique message
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct RPCEchoResponse {
+        pub response_msg: String,
+    }
+    pub struct RPCEcho {}
+
+    #[export_impl]
+    impl RPCEcho {
+    #[export_method]
+    pub async fn echo(&self, args: RPCEchoRequest) ->
+    Result<RPCEchoResponse, String>{
+        Ok(RPCEchoResponse{
+            response_msg: "aut-ct".to_string() + &args.msg,
+        })
+        }
+    }
+
     #[derive(Serialize, Deserialize)]
     pub struct RPCAuditProofVerifyRequest {
         pub keyset: String,
