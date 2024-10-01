@@ -29,12 +29,12 @@ impl ProcessGuard {
 }
 
 // kills subprocess (here autct) on shutdown.
-// while this can cause substantial delays, we otherwise
-// would need to sync a previously running process
-// with current config, which is a bunch more mess.
+// While it would be more convenient to allow
+// attaching to a pre-existing server, to prevent
+// startup delays, this is simpler for now, and
+// avoids potential confusion/more code logic.
 impl Drop for ProcessGuard {
     fn drop(&mut self) {
-        println!("drop is getting called now");
         // TODO is it even possible to
         // handle the case where kill fails to kill?
         let _ = self.child.kill();
@@ -45,7 +45,6 @@ impl Drop for ProcessGuard {
 struct Wrapper {
     wrapped_app: Arc<RwLock<AutctVerifierApp>>,
 }
-
 
 struct AutctVerifierApp {
     autctcfg: Option<AutctConfig>,
@@ -68,7 +67,6 @@ struct AutctVerifierApp {
     verif_result: Arc<Mutex<Option<String>>>,
     // this remembers the last RPC response we saw:
     last_verif_result: Option<String>,
-    verif_runtime: Arc<Runtime>,
     server_state: Arc<Mutex<ServerState>>,
     autct_process_guard: Option<ProcessGuard>,
 }
@@ -85,11 +83,11 @@ enum ServerState {
 
 #[tokio::main]
 async fn main() -> eframe::Result {
-    // make a read-only copy of the app for the
-    // monitoring thread:
     let mut myapp  = AutctVerifierApp::default();
     myapp.try_load_autctcfg();
     let myapplock = Arc::new(RwLock::new(myapp));
+    // make a copy of the app lock for the
+    // monitoring thread:
     let shared_myapplock = Arc::clone(&myapplock);
 
     thread::spawn(move || {
@@ -99,28 +97,19 @@ async fn main() -> eframe::Result {
             let lockres = shared_myapplock.try_read();
             if !lockres.is_err() {
                 let app_for_reading = lockres.unwrap();
-                // println-s here for now to sanity check the monitoring echo RPC
-                // calls are behaving as expected:
                 if !app_for_reading.autctcfg.is_none() {
-                    //println!("autctcfg was not none in the monitoring thread");
                     let rt = Runtime::new().unwrap();
                     let res = rt.block_on(
                         request_echo(&app_for_reading.autctcfg.as_ref().unwrap()));
-                    //println!("Request echo method returned");
                     match res {
-                        Ok(_) => {println!("Echo successful");
+                        Ok(_) => {println!("Echo successful; server is up.");
                                 let mut state = app_for_reading
                                 .server_state.lock().unwrap();
                                 *state = ServerState::Ready;
                                 break;},
-                    Err(_) => {
-                        //println!("Echo call returned an error");
-                        }
+                    Err(_) => {}
                     } // end match
                 } // end autctcfg none check
-                else {
-                    println!("in monitoring thread, autctcfg was none");
-                }
             } // end check for lock
             // Sleep for 1 second before the next check
             thread::sleep(Duration::from_secs(1));
@@ -165,7 +154,6 @@ impl AutctVerifierApp {
             || CustomError("Failed to load signature message".to_string()))?);
         }
         cfg.bc_network = Some(self.network.clone());
-        println!("Finishing check cfg data ok");
         Ok(cfg)
     }
 
@@ -184,8 +172,11 @@ impl AutctVerifierApp {
         self.is_verif_loading = true;
         let result = Arc::clone(&self.verif_result);
         let cfgclone = self.autctcfg.clone().unwrap();
-        self.verif_runtime.spawn(async move {
-            let res = AutctVerifierApp::verify(cfgclone).await;
+        // logic here is as for `request_echo` above:
+        thread::spawn(move || {
+            let rt = Runtime::new().unwrap();
+            let res = rt.block_on(
+                AutctVerifierApp::verify(cfgclone));
             *result.lock().unwrap() = Some(res);
         });
     }
@@ -227,7 +218,6 @@ impl AutctVerifierApp {
         dot_pos: &Pos2, dot_radius: f32) {
         // Determine the color of the dot based on the verification
         // server(called in the background)'s state:
-        //println!("Got into update dot");
         let process_state = *self.server_state.lock().unwrap();
         let dot_color = match process_state {
             ServerState::NotStarted => Color32::BLUE,
@@ -249,7 +239,6 @@ impl AutctVerifierApp {
 
         // Handle click on the circle
         if response.clicked() && process_state == ServerState::NotStarted {
-            println!("Circle clicked! Starting the process...");
             self.start_server();
         }
     });
@@ -270,7 +259,6 @@ impl Default for AutctVerifierApp {
             is_verif_loading: false,
             verif_result: Arc::new(Mutex::new(None)),
             last_verif_result: None,
-            verif_runtime: Arc::new(Runtime::new().unwrap()),
             server_state: Arc::new(Mutex::new(ServerState::NotStarted)),
             autct_process_guard: None,
         }
@@ -280,7 +268,7 @@ impl Default for AutctVerifierApp {
 impl eframe::App for Wrapper {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Point of discussion: I think dark mode will work
-        // a little better than light:
+        // a little better than light for most users:
         //ctx.set_visuals(egui::Visuals::light());
 
         // GUI does not respond to updates unless
@@ -306,7 +294,8 @@ impl eframe::App for Wrapper {
             .min_height(available_height * 0.25)
             .show(ctx, |ui| {
                 ui.set_enabled(!(
-                    state.show_verif_modal || state.show_conn_modal || state.show_verifres_modal));
+                    state.show_verif_modal || state.show_conn_modal ||
+                    state.show_verifres_modal));
                 if ui.add_sized([200.0, 60.0],
                     egui::Button::new(RichText::new(
                         "VERIFY").size(30.0).strong())).clicked() {
@@ -396,7 +385,6 @@ impl eframe::App for Wrapper {
         });
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                //println!("Starting the central panel paint");
                 ui.set_enabled(!(state.show_verif_modal || state.show_conn_modal || state.show_verifres_modal));
                 ui.label(RichText::new(
                     "Choose keyset (.pks) file:").size(28.0).strong());
