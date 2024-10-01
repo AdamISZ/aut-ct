@@ -4,13 +4,43 @@
 
 use eframe::egui::{self, Color32, Pos2, RichText, Vec2, Window};
 use tokio::runtime::Runtime;
-use std::process::Stdio;
+use std::process::{Stdio, Command, Child};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use tokio::time::Duration;
 use rfd::FileDialog;
 use autct::autctactions::{request_audit_verify, request_echo};
 use autct::config::AutctConfig;
+use std::io;
+
+struct ProcessGuard {
+    child: Child,
+}
+
+impl ProcessGuard {
+    fn new(command: &str, args: &[&str]) -> io::Result<Self> {
+        let child = Command::new(command)
+            .args(args)
+            .stderr(Stdio::null())
+            .stdout(Stdio::null())
+            .spawn()?;
+        Ok(Self { child })
+    }
+}
+
+// kills subprocess (here autct) on shutdown.
+// while this can cause substantial delays, we otherwise
+// would need to sync a previously running process
+// with current config, which is a bunch more mess.
+impl Drop for ProcessGuard {
+    fn drop(&mut self) {
+        println!("drop is getting called now");
+        // TODO is it even possible to
+        // handle the case where kill fails to kill?
+        let _ = self.child.kill();
+    }
+}
+
 
 struct Wrapper {
     wrapped_app: Arc<RwLock<AutctVerifierApp>>,
@@ -40,6 +70,7 @@ struct AutctVerifierApp {
     last_verif_result: Option<String>,
     verif_runtime: Arc<Runtime>,
     server_state: Arc<Mutex<ServerState>>,
+    autct_process_guard: Option<ProcessGuard>,
 }
 
 #[derive(Debug)]
@@ -71,18 +102,20 @@ async fn main() -> eframe::Result {
                 // println-s here for now to sanity check the monitoring echo RPC
                 // calls are behaving as expected:
                 if !app_for_reading.autctcfg.is_none() {
-                    println!("autctcfg was not none in the monitoring thread");
+                    //println!("autctcfg was not none in the monitoring thread");
                     let rt = Runtime::new().unwrap();
                     let res = rt.block_on(
                         request_echo(&app_for_reading.autctcfg.as_ref().unwrap()));
-                    println!("Request echo method returned");
+                    //println!("Request echo method returned");
                     match res {
                         Ok(_) => {println!("Echo successful");
                                 let mut state = app_for_reading
                                 .server_state.lock().unwrap();
                                 *state = ServerState::Ready;
                                 break;},
-                    Err(_) => {println!("Echo call returned an error");}
+                    Err(_) => {
+                        //println!("Echo call returned an error");
+                        }
                     } // end match
                 } // end autctcfg none check
                 else {
@@ -112,20 +145,25 @@ impl AutctVerifierApp {
         }
     }
 
-    fn check_cfg_data(&self) -> Result<AutctConfig, CustomError> {
-        println!("Starting check cfg data");
+    fn check_cfg_data(&self, servermode: bool) -> Result<AutctConfig, CustomError> {
+        // If servermode is true, we only care about the keyset
+        // and network settings. Otherwise, we check all.
         let mut cfg = self.autctcfg
         .clone().ok_or_else(|| CustomError("Failed to load config".to_string()))?;
+        if !servermode {
         cfg.proof_file_str = Some(self.proof_file
         .lock().unwrap().clone().ok_or_else(
             || CustomError("Failed to load proof file location".to_string()))?);
+        }
         let keyset_str = self.keyset_file
         .lock().unwrap().clone().ok_or_else(
         || CustomError("Failed to load keyset file location".to_string()))?;
         cfg.keysets = Some("mycontext".to_owned() + ":" + &keyset_str);
+        if !servermode {
         cfg.user_string = Some(self.sigmessage
             .clone().ok_or_else(
             || CustomError("Failed to load signature message".to_string()))?);
+        }
         cfg.bc_network = Some(self.network.clone());
         println!("Finishing check cfg data ok");
         Ok(cfg)
@@ -153,32 +191,36 @@ impl AutctVerifierApp {
     }
 
     /// Starts the verification server in the background
-    /// by calling std::process:Command
-    fn start_server(&self) {
+    /// by calling std::process:Command; we use a wrapper
+    /// `ProcessGuard` object so that the background process
+    /// can be automatically killed on drop.
+    fn start_server(&mut self) {
         let server_state = Arc::clone(
             &self.server_state);
-        let keyset = self.autctcfg.clone().unwrap().keysets.unwrap();
-        let network = self.autctcfg.clone().unwrap().bc_network.unwrap();    
-        // Spawn a new thread to run the process
-        thread::spawn(move || {
-
-                let mut state = server_state.lock().unwrap();
-                *state = ServerState::NotStarted;
-
-
-            // Expected to take a while
-            // TODO: expect just crashes; ideally want to show a prompt
-            // that server startup failed with advice on how to fix it:
-            std::process::Command::new(
-                "./autct").arg("-k").arg(keyset).arg("-n").arg(
-                network)
-            .stderr(Stdio::null())
-            .stdout(Stdio::null())
-            .spawn().expect("Failed to start autct process in background.");
+        // read in the current config settings in the UI before
+        // passing them as arguments to the autct server.
+        let newcfg = self.check_cfg_data(
+            true);
+        if newcfg.is_err() {
+            self.show_verif_modal = true;
+        } else {
+            self.autctcfg = Some(newcfg.unwrap());
+            let keyset = self.autctcfg.clone().unwrap().keysets.unwrap();
+            let network = self.autctcfg.clone().unwrap().bc_network.unwrap();
+            println!("Starting process with keyset: {}, network: {}", keyset, network);
+            // TODO a failure to start is silent here; the user's
+            // only feedback is that the dot won't turn green.
+            self.autct_process_guard = Some(ProcessGuard::new(
+            "./autct", &[
+            "-M", "serve",
+            "-k", &keyset,
+            "-n", &network]).expect(
+                "Failed to start child autct process"));
             // Running means the server is processing the data
             // but not yet serving on the port:
+            let mut state = server_state.lock().unwrap();
             *state = ServerState::Running;
-        });
+        }
     }
 
     fn update_dot(&mut self, ctx: &egui::Context,
@@ -230,6 +272,7 @@ impl Default for AutctVerifierApp {
             last_verif_result: None,
             verif_runtime: Arc::new(Runtime::new().unwrap()),
             server_state: Arc::new(Mutex::new(ServerState::NotStarted)),
+            autct_process_guard: None,
         }
     }
 }
@@ -268,7 +311,7 @@ impl eframe::App for Wrapper {
                     egui::Button::new(RichText::new(
                         "VERIFY").size(30.0).strong())).clicked() {
                     let newcfg =
-                    state.check_cfg_data();
+                    state.check_cfg_data(false);
                     if newcfg.is_err() {
                         state.show_verif_modal = true;
                     } else {
