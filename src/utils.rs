@@ -3,8 +3,7 @@ extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
 
-use ark_ff::{BigInteger, Field};
-use ark_ff::{PrimeField, Zero, One};
+use ark_ff::{BigInteger, Field, PrimeField};
 use ark_ec::AffineRepr;
 use ark_ec::short_weierstrass::SWCurveConfig;
 use ark_ec::short_weierstrass::Affine;
@@ -23,7 +22,8 @@ use merlin::Transcript;
 // all transcripts created in this project should be
 // initialized with this name:
 pub const APP_DOMAIN_LABEL: &[u8] = b"autct-v1.0";
-pub const BRANCHING_FACTOR: usize = 256;
+pub const BRANCHING_FACTOR: usize = 1024;
+pub const BATCH_SIZE: usize = 1;
 // specific to an application; this default is only for tests.
 // Should be set in the config file, in the field `context_label`.
 pub const CONTEXT_LABEL: &[u8] = b"default-app-context-label";
@@ -236,87 +236,30 @@ pub fn get_pubkey_leaves_hex<F: PrimeField,
     }
 }
 
-pub fn create_permissible_points_and_randomnesses<
-   F: PrimeField,
-   P0: SWCurveConfig<BaseField = F> + Copy,
-   P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
-    leaf_commitments: &[Affine<P0>],
-    sr_params: &SelRerandParameters<P0, P1>,
-) -> (Vec<Affine<P0>>, Vec<P1::BaseField>) {
-    leaf_commitments
-        .iter()
-        .map(|commitment| {
-            sr_params
-                .even_parameters
-                .uh
-                .permissible_commitment(commitment, &sr_params.even_parameters.pc_gens.B_blinding)
-        })
-        .unzip()
-}
-
 pub fn get_curve_tree<
 F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
     leaf_commitments: &Vec<Affine<P0>>,
     depth: usize,
-    sr_params: &SelRerandParameters<P0, P1>) -> (CurveTree<P0, P1>, Affine<P0>){
+    sr_params: &SelRerandParameters<P0, P1>) -> (CurveTree<BRANCHING_FACTOR, BATCH_SIZE, P0, P1>, Affine<P0>){
     //let leaf_commitments = get_leaf_commitments(file_loc);
-    let curve_tree = CurveTree::<P0, P1>::from_set(
+    let curve_tree = CurveTree::<BRANCHING_FACTOR, BATCH_SIZE, P0, P1>::from_set(
         leaf_commitments, sr_params, Some(depth));
     (curve_tree, sr_params.even_parameters.pc_gens.B_blinding)
 }
 
 /// Derive the index where our pubkey is in the list.
-/// but: since it will have been permissible-ized, we need to rederive the permissible
-/// version here, purely for searching. This is a little involved!
-/// First, as well as the randomness in the blinded commitment, we also need to use the same
-/// blinding base.
-/// Second, the randomness for the additional proofs will have to be the randomness
-/// used in the curve tree randomization, *plus* the randomness that was used
-/// to convert P to a permissible point, upon initial insertion into the tree.
-/// We need to keep track of what this tweak is, in both possibilities of positive
-/// and negative of initial key.
 pub fn get_key_index_from_leaves<F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,>(
     leaf_commitments: &Vec<Affine<P0>>,
-    b_blinding: Affine<P0>,
-    sr_params: &SelRerandParameters<P0, P1>,
-    our_pubkey: Affine<P0>) -> Result<(i32, P0::ScalarField, bool), Box<dyn Error>> {
-    let mut privkey_parity_flip: bool = false;
-    let mut r_offset1: P0::ScalarField = P0::ScalarField::zero();
-    let mut r_offset2: P0::ScalarField = P0::ScalarField::zero();
-    let mut r_offset: P0::ScalarField = P0::ScalarField::zero();
-    let mut our_pubkey_permiss1: Affine<P0> = our_pubkey;
-    while !sr_params.even_parameters.uh.is_permissible(our_pubkey_permiss1) {
-        our_pubkey_permiss1 = (our_pubkey_permiss1 + b_blinding).into();
-        r_offset1 += P0::ScalarField::one();
-    }
-    let mut our_pubkey_permiss2: Affine<P0> = -our_pubkey;
-    while !sr_params.even_parameters.uh.is_permissible(our_pubkey_permiss2) {
-        our_pubkey_permiss2 = (our_pubkey_permiss2 + b_blinding).into();
-        r_offset2 += P0::ScalarField::one();
-    }
-    let mut key_index: i32; // we're guaranteed to overwrite or panic but the compiler insists.
-    // the reason for 2 rounds of search is that BIP340 can output a different parity
-    // compared to ark-ec 's compression algo.
-    key_index = match leaf_commitments.iter().position(|&x| x  == our_pubkey_permiss1) {
-        None => -1,
-        Some(ks) => {r_offset = r_offset1;
-            ks.try_into().unwrap()}
+    our_pubkey: Affine<P0>) -> Result<i32, Box<dyn Error>> {
+    let key_index = match leaf_commitments.iter().position(|&x| x  == our_pubkey) {
+        None => {return Err("provided pubkey not found in the set".into());},
+        Some(ks) => {ks.try_into().unwrap()}
     };
-    if key_index == -1 {
-        key_index = match leaf_commitments.iter().position(|&x| x == our_pubkey_permiss2) {
-            None => {return Err("provided pubkey not found in the set".into());},
-            Some(ks) => {
-                privkey_parity_flip = true;
-                r_offset = r_offset2;
-                ks.try_into().unwrap()
-            }
-        }
-    };
-    Ok((key_index, r_offset, privkey_parity_flip))
+    Ok(key_index)
 }
 
 
@@ -335,14 +278,14 @@ pub fn get_curve_tree_with_proof<
     pubkey_file_path: &str,
     our_pubkey: Affine<P0>,
 ) -> Result<(R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>,
-    SelectAndRerandomizePath<P0, P1>,
+    SelectAndRerandomizePath<BRANCHING_FACTOR, P0, P1>,
     P0::ScalarField,
-    Affine<P0>, Affine<P0>, bool), Box<dyn std::error::Error>> {
+    Affine<P0>, Affine<P0>), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
     let generators_length = 1 << generators_length_log_2;
 
     let sr_params =
-        SelRerandParameters::<P0, P1>::new(generators_length, generators_length, &mut rng);
+        SelRerandParameters::<P0, P1>::new(generators_length, generators_length);
 
     let p0_transcript = Transcript::new(b"select_and_rerandomize");
     let mut p0_prover: Prover<_, Affine<P0>> =
@@ -357,12 +300,12 @@ pub fn get_curve_tree_with_proof<
     // as the commitments (i.e. pedersen commitments with zero randomness) at
     // the leaf level. (though they *can* themselves be commitments, e.g. see auditor code)
     let leaf_commitments = get_leaf_commitments::<F, P0>(
-        &(pubkey_file_path.to_string() + ".p"));
+        &(pubkey_file_path.to_string()));
 
     let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
-    let (key_index, r_offset, privkey_parity_flip) =
-    get_key_index_from_leaves(
-        &leaf_commitments, b_blinding, &sr_params, our_pubkey)?;
+    let key_index =
+    get_key_index_from_leaves::<F, P0, P1>(
+        &leaf_commitments, our_pubkey)?;
     // Now we know we have a key that's in the set, we can construct the curve
     // tree from the set, and then the proof using its private key:
     let beforect = Instant::now();
@@ -371,43 +314,27 @@ pub fn get_curve_tree_with_proof<
     println!("Elapsed time for curve tree construction: {:.2?}", beforect.elapsed());
     assert_eq!(curve_tree.height(), depth);
 
-    let (path_commitments, rand_scalar) =
+    let (mut path_commitments, rand_scalar) =
     curve_tree.select_and_rerandomize_prover_gadget(
         key_index.try_into().unwrap(),
+        0,
         &mut p0_prover,
         &mut p1_prover,
         &sr_params,
         &mut rng,
     );
-    // print the root of the curve tree.
-    // TODO: how to allow the return value to be either
-    // Affine<P0> or Affine<P1>? And as a consequence,
-    // to let the code be correct for any depth.
-    // And/or, is there not
-    // a simpler way to extract the root of the tree
-    // (which should be just .parent_commitment, but all methods
-    // to extract this value seem to be private)
-    let newpath = curve_tree.select_and_rerandomize_verification_commitments(
-    path_commitments.clone());
-    let root_is_odd = newpath.even_commitments.len() == newpath.odd_commitments.len();
-    println!("Root is odd? {}", root_is_odd);
-    let root: Affine<P0>;
-    if !root_is_odd {
-        root = *newpath.even_commitments.first().unwrap();
-    }
-    else {
-        // derp, see above TODO
-        panic!("Wrong root parity, should be even");
-    }
+    curve_tree.select_and_rerandomize_verification_commitments(
+    &mut path_commitments);
+    let root: Affine<P0> = *path_commitments.clone().even_commitments.first().unwrap();
     let p0_proof = p0_prover
         .prove(&sr_params.even_parameters.bp_gens)
         .unwrap();
     let p1_proof = p1_prover
         .prove(&sr_params.odd_parameters.bp_gens)
         .unwrap();
-    let returned_rand = rand_scalar + r_offset;
+    //let returned_rand = rand_scalar + r_offset;
     Ok((p0_proof, p1_proof, path_commitments,
-     returned_rand, b_blinding, root, privkey_parity_flip))
+     rand_scalar, b_blinding, root))
 }
 
 
@@ -416,14 +343,14 @@ F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,
 >(
-    curve_tree: &CurveTree<P0, P1>,
+    curve_tree: &CurveTree<BRANCHING_FACTOR, BATCH_SIZE, P0, P1>,
     leaf_commitments: &Vec<Affine<P0>>,
     our_pubkey: Affine<P0>,
     sr_params: &SelRerandParameters<P0, P1>,
 ) -> Result<(R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>,
-SelectAndRerandomizePath<P0, P1>,
+SelectAndRerandomizePath<BRANCHING_FACTOR, P0, P1>,
 P0::ScalarField,
-Affine<P0>, Affine<P0>, bool), Box<dyn std::error::Error>> {
+Affine<P0>, Affine<P0>), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
 
     let p0_transcript = Transcript::new(b"select_and_rerandomize");
@@ -435,79 +362,38 @@ Affine<P0>, Affine<P0>, bool), Box<dyn std::error::Error>> {
         Prover::new(&sr_params.odd_parameters.pc_gens, p1_transcript);
 
     let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
-    let (key_index, r_offset, privkey_parity_flip) =
-    get_key_index_from_leaves(
-        &leaf_commitments, b_blinding, &sr_params, our_pubkey)?;
-    let (path_commitments, rand_scalar) =
+    let key_index =
+    get_key_index_from_leaves::<F, P0, P1>(
+        &leaf_commitments, our_pubkey)?;
+    let (mut path_commitments, rand_scalar) =
     curve_tree.select_and_rerandomize_prover_gadget(
         key_index.try_into().unwrap(),
+        0,
         &mut p0_prover,
         &mut p1_prover,
         &sr_params,
         &mut rng,
     );
-    // print the root of the curve tree.
-    // TODO: how to allow the return value to be either
-    // Affine<P0> or Affine<P1>? And as a consequence,
-    // to let the code be correct for any depth.
-    // And/or, is there not
-    // a simpler way to extract the root of the tree
-    // (which should be just .parent_commitment, but all methods
-    // to extract this value seem to be private)
-    let newpath = curve_tree.select_and_rerandomize_verification_commitments(
-    path_commitments.clone());
-    let root_is_odd = newpath.even_commitments.len() == newpath.odd_commitments.len();
-    println!("Root is odd? {}", root_is_odd);
-    let root: Affine<P0>;
-    if !root_is_odd {
-        root = *newpath.even_commitments.first().unwrap();
-    }
-    else {
-        // derp, see above TODO
-        panic!("Wrong root parity, should be even");
-    }
+    curve_tree.select_and_rerandomize_verification_commitments(
+    &mut path_commitments);
+    let root: Affine<P0> = *path_commitments.clone().even_commitments.first().unwrap();
     let p0_proof = p0_prover
         .prove(&sr_params.even_parameters.bp_gens)
         .unwrap();
     let p1_proof = p1_prover
         .prove(&sr_params.odd_parameters.bp_gens)
         .unwrap();
-    let returned_rand = rand_scalar + r_offset;
+    //let returned_rand = rand_scalar + r_offset;
     Ok((p0_proof, p1_proof, path_commitments,
-     returned_rand, b_blinding, root, privkey_parity_flip))
+     rand_scalar, b_blinding, root))
 }
 
-// Takes as input a hex list of actual BIP340 pubkeys
-// that should come from the utxo set;
-// converts each point into a permissible point
-// and then writes these points in binary format into
-// a new file with same name as keyset with .p appended.
-// TODO return an error if this can't be done.
+// No longer needed without permissibility;
+// currently present as a near pass through
 pub fn convert_keys<F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField,
 ScalarField = P0::BaseField> + Copy,>(
-    keyset: String, generators_length_log_2: u8) -> Result<(), Box<dyn Error>>{
-    let raw_pubkeys =
-    get_pubkey_leaves_hex::<F, P0>(&keyset);
-    let mut rng = rand::thread_rng();
-    let generators_length = 1 << generators_length_log_2;
-
-    let sr_params =
-        SelRerandParameters::<P0, P1>::new(generators_length,
-            generators_length, &mut rng);
-    let (permissible_points, _pr)
-     = create_permissible_points_and_randomnesses(
-        &raw_pubkeys, &sr_params);
-    // take vec permissible points and write it in binary as n*33 bytes
-    let mut buf: Vec<u8> = Vec::with_capacity(permissible_points.len()*33);
-    let _: Vec<_> = permissible_points
-        .iter()
-        .map(|pt: &Affine<P0>| {
-            pt.serialize_compressed(&mut buf).expect(
-                "Failed to serialize point")
-        }).collect();
-    let output_file = keyset.clone() + ".p";
-    write_file_string(&output_file, buf);
-    Ok(())
+    keyset: String) -> Result<Vec<Affine<P0>>, Box<dyn Error>>{
+    Ok(get_pubkey_leaves_hex::<F, P0>(&keyset))
 }

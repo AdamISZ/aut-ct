@@ -11,7 +11,6 @@ use bulletproofs::r1cs::Verifier;
 use ark_ec::short_weierstrass::SWCurveConfig;
 use ark_ff::PrimeField;
 
-
 use relations::curve_tree::{SelRerandParameters, CurveTree, SelectAndRerandomizePath};
 
 use merlin::Transcript;
@@ -27,17 +26,22 @@ use std::time::Instant;
 // items, which are all deserialized from the proof string given
 // by the Prover)
 pub fn verify_curve_tree_proof<
+const BRANCHING_FACTOR: usize,
+const BATCH_SIZE: usize,
     F: PrimeField,
     P0: SWCurveConfig<BaseField = F> + Copy,
     P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,
 >(
-    path_commitments: SelectAndRerandomizePath<P0, P1>,
+    path_commitments: SelectAndRerandomizePath<BRANCHING_FACTOR, P0, P1>,
     sr_params: &SelRerandParameters<P0, P1>,
-    curve_tree: &CurveTree<P0, P1>,
+    curve_tree: &CurveTree<BRANCHING_FACTOR, BATCH_SIZE, P0, P1>,
     p0proof: &R1CSProof<Affine<P0>>,
     p1proof: &R1CSProof<Affine<P1>>,
     root: Affine<P0>,
 ) -> Result<Affine<P0>, R1CSError> {
+    let path_commitments2:
+    &mut SelectAndRerandomizePath<BRANCHING_FACTOR, P0, P1>
+    = &mut path_commitments.clone();
     let timer2 = Instant::now();
     println!("Elapsed time for selrerand paramater generation: {:.2?}", timer2.elapsed());
     let secp_transcript = Transcript::new(b"select_and_rerandomize");
@@ -74,21 +78,13 @@ pub fn verify_curve_tree_proof<
     };
     println!("Elapsed time for verifier calls: {:.2?}", before.elapsed());
 
+    curve_tree.select_and_rerandomize_verification_commitments(
+        path_commitments2);
+
+    let verifier_root: Affine<P0> = *path_commitments2.even_commitments.first().unwrap();
+
     // check also that the path's first node matches the root of the tree that we
     // constructed from the keyset
-    // TODO see comments on autct.rs construction of root also.
-    let newpath = curve_tree.select_and_rerandomize_verification_commitments(
-        path_commitments.clone());
-    let root_is_odd = newpath.even_commitments.len() == newpath.odd_commitments.len();
-    println!("Root is odd? {}", root_is_odd);
-    let verifier_root: Affine<P0>;
-    if !root_is_odd {
-        verifier_root = *newpath.even_commitments.first().unwrap();
-    }
-    else {
-        // derp, see above TODO
-        panic!("Wrong root parity, should be even");
-    }
     assert_eq!(root, verifier_root);
 
     // return the last commitment so that it can be checked

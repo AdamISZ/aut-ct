@@ -4,7 +4,7 @@ use ark_serialize::{ CanonicalDeserialize,
     Compress, Validate};
 use crate::rpc::{RPCAuditProofVerifier, RPCAuditProver,
     RPCCreateKeys, RPCProverVerifierArgs, RPCEcho};
-use crate::utils::{get_curve_tree, get_leaf_commitments,
+use crate::utils::{get_curve_tree,
     convert_keys, APP_DOMAIN_LABEL};
 use tokio::{task, net::TcpListener};
 use std::fs;
@@ -32,32 +32,26 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let host: &str= &autctcfg.rpc_host.clone().unwrap();
     let port_str: &str = &rpc_port.to_string();
     let addr: String = format!("{}:{}", host, port_str);
-    let mut rng = rand::thread_rng();
+    //let mut rng = rand::thread_rng();
     let generators_length = 1 << autctcfg.generators_length_log_2.unwrap();
     let sr_params = SelRerandParameters::<SecpConfig, SecqConfig>::new(
                 generators_length,
-                generators_length, &mut rng);
-    let mut curve_trees: Vec<CurveTree<SecpConfig, SecqConfig>> = vec![];
+                generators_length);
+    let mut curve_trees: Vec<Arc<CurveTree<{utils::BRANCHING_FACTOR},
+     {utils::BATCH_SIZE}, SecpConfig, SecqConfig>>> = vec![];
     let mut Js: Vec<Affine<SecpConfig>> = vec![];
     let mut kss: Vec<Arc<Mutex<KeyImageStore<Affine<SecpConfig>>>>> = vec![];
     for (fl, cl) in zip(keyset_file_locs.iter(), context_labels.iter()) {
-        // this part is what consumes time, so we do it upfront on startup of the rpc server,
-        // for every keyset that we are serving.
-        // also note that for now there are no errors returned by convert_keys hence unwrap()
-        // TODO add info to interface so user knows why the startup is hanging
-        convert_keys::<SecpBase,
+        let leaf_commitments = convert_keys::<SecpBase,
         SecpConfig,
-        SecqConfig>(fl.to_string(),
-         autctcfg.generators_length_log_2.unwrap())?;
-        let leaf_commitments = get_leaf_commitments(
-            &(fl.to_string() + ".p"));
+        SecqConfig>(fl.to_string())?;
 
         // Actually creating the curve tree is much less time consuming (a few seconds for most trees)
         let (curve_tree2, _) = get_curve_tree::
         <SecpBase, SecpConfig, SecqConfig>(
         &leaf_commitments,
         autctcfg.depth.unwrap().try_into().unwrap(), &sr_params);
-        curve_trees.push(curve_tree2);
+        curve_trees.push(Arc::new(curve_tree2));
         let J = utils::get_generators(cl.as_bytes());
         // load the appropriate key image database.
         // There is a finesse here: given that we may have many (keyset, context_label)
@@ -108,7 +102,7 @@ pub async fn do_serve(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>{
     let auditor_service = Arc::new(RPCAuditProver{
         prover_verifier_args: prover_verifier_args.clone()});
     let auditor_verify_service = Arc::new(RPCAuditProofVerifier{
-        prover_verifier_args});
+        prover_verifier_args: prover_verifier_args.clone()});
     let createkeys_service = Arc::new(RPCCreateKeys{});
     // dummy service for liveness checks:
     let echo_service = Arc::new(RPCEcho{});

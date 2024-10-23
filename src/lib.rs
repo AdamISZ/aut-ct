@@ -58,17 +58,34 @@ pub mod rpc {
     use ark_ff::BigInteger256;
     use relations::curve_tree::{CurveTree, SelRerandParameters};
 
-    #[derive(Clone)]
     pub struct RPCProverVerifierArgs {
                 pub keyset_file_locs: Vec<String>,
                 pub context_labels: Vec<String>,
                 pub sr_params: SelRerandParameters<SecpConfig, SecqConfig>,
-                pub curve_trees: Vec<CurveTree<SecpConfig, SecqConfig>>,
+                pub curve_trees: Vec<Arc<CurveTree<BRANCHING_FACTOR, BATCH_SIZE,
+                SecpConfig, SecqConfig>>>,
                 pub G: Affine<SecpConfig>,
                 pub H: Affine<SecpConfig>,
                 pub Js: Vec<Affine<SecpConfig>>,
                 pub ks: Vec<Arc<Mutex<keyimagestore::KeyImageStore<Affine<SecpConfig>>>>>,
             }
+    
+impl Clone for RPCProverVerifierArgs {
+    fn clone(&self) -> Self {
+        RPCProverVerifierArgs {
+            keyset_file_locs: self.keyset_file_locs.clone(),
+            context_labels: self.context_labels.clone(),
+            G: self.G.clone(),
+            H: self.H.clone(),
+            Js: self.Js.clone(),
+            ks: self.ks.clone(),
+            sr_params: SelRerandParameters::<SecpConfig, SecqConfig>::new(
+            self.sr_params.even_parameters.bp_gens.gens_capacity,
+            self.sr_params.odd_parameters.bp_gens.gens_capacity),
+            curve_trees: self.curve_trees.iter().map(Arc::clone).collect(),
+        }
+    }
+}
 
             #[derive(Serialize, Deserialize)]
             pub struct RPCCreateKeysRequest {
@@ -414,50 +431,31 @@ pub mod rpc {
                     let privkey_bytes = tweaked_key_pair.to_inner().secret_bytes();
                     let privhex = hex::encode(&privkey_bytes);
 
-                    let mut x = decode_hex_le_to_F::<F>(&privhex);
+                    let x = decode_hex_le_to_F::<F>(&privhex);
                     let G = SecpConfig::GENERATOR;
-                    let mut P = G.mul(x).into_affine();
+                    let P = G.mul(x).into_affine();
                     print_affine_compressed(P, "request pubkey");
                     let gctwptime = Instant::now();
-                    let (p0proof,
-                        p1proof,
-                        path,
-                        r,
-                        H,
-                        root,
-                        privkey_parity_flip) = match get_curve_tree_with_proof::<
-                    SecpBase,
-                    SecpConfig,
-                    SecqConfig>(
-                            args.depth.try_into().unwrap(),
-                            args.generators_length_log_2.try_into().unwrap(),
-                            &keyset, P) {
-                                Err(_) => {resp.accepted = -8;
-                                    return Ok(resp);}
-                                Ok((p0proof,
-                                    p1proof,
-                                    path,
-                                r,
-                                H,
-                                root,
-                                privkey_parity_flip)) => (p0proof,
-                                    p1proof,
-                                    path,
-                                r,
-                                H,
-                                root,
-                                privkey_parity_flip),
-                            };
+                    let leaf_commitments = match convert_keys::<
+                    SecpBase, SecpConfig, SecqConfig>(pva.keyset_file_locs[0].clone()) {
+                        Err(_) => {resp.accepted = -8;
+                        return Ok(resp);}
+                        Ok(lc) => lc
+                    };
+                    let (p0proof, p1proof, path, r, H, root) =
+                    match get_curve_tree_proof_from_curve_tree::<SecpBase,
+                    SecpConfig, SecqConfig>(
+                        &pva.curve_trees[0],
+                        &leaf_commitments,
+                        P,
+                        &pva.sr_params) {
+                            Err(_) => {resp.accepted = -8;
+                            return Ok(resp);}
+                            Ok((p0proof, p1proof, path, r, H, root)) =>
+                            (p0proof, p1proof, path, r, H, root)
+                    };
 
                     println!("Elapsed time for get curve tree with proof: {:.2?}", gctwptime.elapsed());
-                    // if we could only find our pubkey in the list by flipping
-                    // the sign of our private key (this is because the BIP340 compression
-                    // logic is different from that in ark-ec; a TODO is to remove this
-                    // confusion by having the BIP340 logic in this code):
-                    if privkey_parity_flip {
-                        x = -x;
-                        P = -P;
-                    }
                     print_affine_compressed(P, "P after flipping");
                     // next steps create the Pedersen DLEQ proof for this key:
                     //
@@ -819,7 +817,7 @@ pub mod rpc {
             R1CSProof::<Affine<SecqConfig>>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).expect("Failed p1proof deserialize");
             let path = 
-            SelectAndRerandomizePath::<SecpConfig, SecqConfig>::deserialize_with_mode(
+            SelectAndRerandomizePath::<BRANCHING_FACTOR, SecpConfig, SecqConfig>::deserialize_with_mode(
                 &mut cursor, Compress::Yes, Validate::Yes).expect("failed path deserialize");
 
             // TODO this is part of the 'can we handle different root parity' problem:

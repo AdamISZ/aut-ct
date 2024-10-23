@@ -52,7 +52,7 @@ use crate::generalschnorr::{GenSchnorrProof, GENSCHNORR_PROTOCOL_LABEL,
 use crate::sumrangeproof::{sum_range_proof, range_proof_sum_gadgets_verifier};
 use crate::autctverifier::verify_curve_tree_proof;
 use crate::utils::{get_generators, get_curve_tree_proof_from_curve_tree,
-    get_leaf_commitments};
+    get_leaf_commitments, BRANCHING_FACTOR, BATCH_SIZE};
 
 pub const J_GENERATOR_LABEL: &[u8] = b"auditor-J";
 pub const H_GENERATOR_LABEL: &[u8] = b"auditor-H";
@@ -80,7 +80,7 @@ P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Co
     pub n: usize,
     pub curvetree_p0_proofs: Vec<R1CSProof<Affine<P0>>>,
     pub curvetree_p1_proofs: Vec<R1CSProof<Affine<P1>>>,
-    pub curvetree_paths: Vec<SelectAndRerandomizePath<P0, P1>>,
+    pub curvetree_paths: Vec<SelectAndRerandomizePath<BRANCHING_FACTOR, P0, P1>>,
     // note that we can only use one tree, hence only one root
     // note also that we are restricted to even depth trees,
     // so the root is always in secp.
@@ -107,14 +107,14 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
         values: Vec<u64>,
         // proof parameters:
         keyset: &str,
-        curve_tree: &CurveTree<P0, P1>,
+        curve_tree: &CurveTree<BRANCHING_FACTOR, BATCH_SIZE, P0, P1>,
         sr_params: &SelRerandParameters<P0, P1>,
         user_string: &str
     ) -> Result<AuditProof<F, P0, P1>, Box<dyn Error>> {
         // 3: curve tree proof for each of the m commitments
         let mut curvetree_p0_proofs: Vec<R1CSProof<Affine<P0>>> = Vec::new();
         let mut curvetree_p1_proofs: Vec<R1CSProof<Affine<P1>>> = Vec::new();
-        let mut  curvetree_paths: Vec<SelectAndRerandomizePath<P0, P1>> = Vec::new();
+        let mut  curvetree_paths: Vec<SelectAndRerandomizePath<BRANCHING_FACTOR, P0, P1>> = Vec::new();
         let mut blindings: Vec<P0::ScalarField> = Vec::new();
 
         let leaf_commitments = get_leaf_commitments::<F, P0>(
@@ -126,8 +126,7 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
                 path,
                 r,
                 _, // we don't need H because it is static
-                rt,
-                _) = match // parity flip
+                rt) = match
                 get_curve_tree_proof_from_curve_tree::<
                     F,
                     P0,
@@ -141,14 +140,12 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
                             path,
                         r,
                         H,
-                        root,
-                        privkey_parity_flip)) => (p0proof,
+                        root)) => (p0proof,
                             p1proof,
                             path,
                         r,
                         H,
-                        root,
-                        privkey_parity_flip),
+                        root),
                     };
             // TODO sanity check all same maybe?
             root = Some(rt);
@@ -231,7 +228,7 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
 
     pub fn verify(
         &self, G: &Affine<P0>, J: &Affine<P0>,
-        curve_tree: &CurveTree<P0, P1>,
+        curve_tree: &CurveTree<BRANCHING_FACTOR, BATCH_SIZE, P0, P1>,
         sr_params: &SelRerandParameters<P0, P1>,
         user_string: &str
     ) -> Result<(), Box<dyn Error>>
@@ -398,7 +395,7 @@ ScalarField = P0::BaseField> + Copy,> CanonicalDeserialize for AuditProof<F, P0,
                 &mut reader, compress, validate)?,
             curvetree_p1_proofs: Vec::<R1CSProof<Affine<P1>>>::deserialize_with_mode(
                 &mut reader, compress, validate)?,
-            curvetree_paths: Vec::<SelectAndRerandomizePath<P0, P1>>::deserialize_with_mode(
+            curvetree_paths: Vec::<SelectAndRerandomizePath<BRANCHING_FACTOR, P0, P1>>::deserialize_with_mode(
                 &mut reader, compress, validate)?,
             root: Affine::<P0>::deserialize_with_mode(&mut reader, compress, validate)?,
             representation_proofs: Vec::<GenSchnorrProof<Affine<P0>>>::deserialize_with_mode(
