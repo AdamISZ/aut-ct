@@ -33,7 +33,18 @@ pub const CONTEXT_LABEL: &[u8] = b"default-app-context-label";
 pub const USER_STRING: &[u8] = b"name-goes-here";
 
 
-
+pub fn convert_pt_to_hex_bip340<F: PrimeField,
+P0: SWCurveConfig<BaseField = F>+Copy>(
+    pt: Affine<P0>) -> Result<String, Box<dyn Error>> {
+    let mut buf2: Vec<u8> = Vec::new();
+    pt.serialize_with_mode(&mut buf2, ark_serialize::Compress::Yes)?; 
+    // ignore the final byte which is the sign byte in ark:
+    let buf3  = &mut buf2[0..32];
+    // ark uses LE, so stop that nonsense:
+    buf3.reverse();
+    let bin_bip340_pubkey = bitcoin::XOnlyPublicKey::from_slice(&buf3)?.serialize();
+    Ok(hex::encode(bin_bip340_pubkey))
+}
 // Given a hex string of big-endian encoding,
 // first change to little endian bytes and then deserialize
 // it as a field element
@@ -249,6 +260,15 @@ P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Co
     (curve_tree, sr_params.even_parameters.pc_gens.B_blinding)
 }
 
+pub fn get_key_index_from_hex_leaves(leaf_commitments: &Vec<&str>,
+    our_pubkey_hex: String) -> Result<i32, Box<dyn Error>> {
+        let key_index = match leaf_commitments.iter().position(|x| *x  == our_pubkey_hex) {
+            None => {return Err("provided pubkey not found in the set".into());},
+            Some(ks) => {ks.try_into().unwrap()}
+        };
+        Ok(key_index)
+}
+
 /// Derive the index where our pubkey is in the list.
 pub fn get_key_index_from_leaves<F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
@@ -343,9 +363,8 @@ F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField, ScalarField = P0::BaseField> + Copy,
 >(
+    key_index: i32,
     curve_tree: &CurveTree<BRANCHING_FACTOR, BATCH_SIZE, P0, P1>,
-    leaf_commitments: &Vec<Affine<P0>>,
-    our_pubkey: Affine<P0>,
     sr_params: &SelRerandParameters<P0, P1>,
 ) -> Result<(R1CSProof<Affine<P0>>, R1CSProof<Affine<P1>>,
 SelectAndRerandomizePath<BRANCHING_FACTOR, P0, P1>,
@@ -362,10 +381,7 @@ Affine<P0>, Affine<P0>), Box<dyn std::error::Error>> {
         Prover::new(&sr_params.odd_parameters.pc_gens, p1_transcript);
 
     let b_blinding = sr_params.even_parameters.pc_gens.B_blinding;
-    let key_index =
-    get_key_index_from_leaves::<F, P0, P1>(
-        &leaf_commitments, our_pubkey)?;
-    let (mut path_commitments, rand_scalar) =
+    let (path_commitments, rand_scalar) =
     curve_tree.select_and_rerandomize_prover_gadget(
         key_index.try_into().unwrap(),
         0,
@@ -374,8 +390,7 @@ Affine<P0>, Affine<P0>), Box<dyn std::error::Error>> {
         &sr_params,
         &mut rng,
     );
-    curve_tree.select_and_rerandomize_verification_commitments(
-    &mut path_commitments);
+
     let root: Affine<P0> = *path_commitments.clone().even_commitments.first().unwrap();
     let p0_proof = p0_prover
         .prove(&sr_params.even_parameters.bp_gens)

@@ -247,8 +247,44 @@ impl Clone for RPCProverVerifierArgs {
                         // C = xG + vJ (note *un*blinded)
                         comms.push(P.add(J.mul(v)).into_affine());
                     }
-                
-
+                    // 1b. Find the indices of each of the above commitments
+                    // in the pks file.
+                    /*
+                    let filestr:String = read_file_string(&keyset)
+                    .expect("Failed to read pubkey file");
+                    let hex_keys_vec = filestr.split_whitespace().collect::<Vec<_>>();
+                    // replace with convert_pt_to_hex_bip340
+                    let hex_bip340_pubkey = match convert_pt_to_hex_bip340(P) {
+                        Err(_) => {resp.accepted = -8;
+                            return Ok(resp);}
+                            Ok(hp) => hp
+                    };
+                    let key_index =
+                    match get_key_index_from_hex_leaves(
+                        &hex_keys_vec, hex_bip340_pubkey){
+                            Err(_) => {resp.accepted = -8;
+                                return Ok(resp);}
+                                Ok(ki) =>
+                                ki
+                        };
+                     */
+                    let mut comms_indices: Vec<i32> = Vec::new();
+                    let filestr = read_file_string(&pva.keyset_file_locs[0])
+                    .expect("Failed to read pubkey file");
+                    let hex_keys_vec = filestr.split_whitespace().collect::<Vec<_>>();
+                    // for each of the points in comms, search for its serialization
+                    // and return the index, adding it to the comms_indices vector
+                    for c in comms.clone() {
+                        let mut buf: Vec<u8> = Vec::new();
+                        c.serialize_compressed(&mut buf).unwrap();
+                        let hex_c = hex::encode(buf);
+                        let key_index = match get_key_index_from_hex_leaves(
+                            &hex_keys_vec, hex_c) {
+                            Err(_) => {return Err("provided pubkey not found in the set".into());},
+                            Ok(ks) => {ks.try_into().unwrap()}
+                        };
+                        comms_indices.push(key_index);
+                    }
                     // 2. Call auditproof.create with:
                     //pub fn create(k: u64,n: usize, G: &Affine<P0>, H: &Affine<P0>, J: &Affine<P0>, commitment_list: Vec<Affine<P0>>,
                     //witness section: privkeys: Vec<P0::ScalarField>, values: Vec<u64>,
@@ -265,9 +301,9 @@ impl Clone for RPCProverVerifierArgs {
                         &G,
                         &J,
                         comms,
+                        comms_indices,
                         privkeys,
                         values,
-                        &pva.keyset_file_locs[0],
                         &pva.curve_trees[0],
                         &pva.sr_params,
                         &args.user_label
@@ -436,18 +472,34 @@ impl Clone for RPCProverVerifierArgs {
                     let P = G.mul(x).into_affine();
                     print_affine_compressed(P, "request pubkey");
                     let gctwptime = Instant::now();
-                    let leaf_commitments = match convert_keys::<
-                    SecpBase, SecpConfig, SecqConfig>(pva.keyset_file_locs[0].clone()) {
+                    // The following section exists to do the key index
+                    // search on the raw file *WITHOUT* deserializing to EC
+                    // points. This ends up being a little messy.
+                    // TODO the correct solution here is to make all serializations
+                    // read at this level be ark- type and in binary and relegate
+                    // both hex and BIP340 formats to external modules.
+                    let filestr:String = read_file_string(&keyset)
+                    .expect("Failed to read pubkey file");
+                    let hex_keys_vec = filestr.split_whitespace().collect::<Vec<_>>();
+                    // replace with convert_pt_to_hex_bip340
+                    let hex_bip340_pubkey = match convert_pt_to_hex_bip340(P) {
                         Err(_) => {resp.accepted = -8;
-                        return Ok(resp);}
-                        Ok(lc) => lc
+                            return Ok(resp);}
+                            Ok(hp) => hp
                     };
+                    let key_index =
+                    match get_key_index_from_hex_leaves(
+                        &hex_keys_vec, hex_bip340_pubkey){
+                            Err(_) => {resp.accepted = -8;
+                                return Ok(resp);}
+                                Ok(ki) =>
+                                ki
+                        };
                     let (p0proof, p1proof, path, r, H, root) =
                     match get_curve_tree_proof_from_curve_tree::<SecpBase,
                     SecpConfig, SecqConfig>(
+                        key_index,
                         &pva.curve_trees[0],
-                        &leaf_commitments,
-                        P,
                         &pva.sr_params) {
                             Err(_) => {resp.accepted = -8;
                             return Ok(resp);}

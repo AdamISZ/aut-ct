@@ -52,7 +52,7 @@ use crate::generalschnorr::{GenSchnorrProof, GENSCHNORR_PROTOCOL_LABEL,
 use crate::sumrangeproof::{sum_range_proof, range_proof_sum_gadgets_verifier};
 use crate::autctverifier::verify_curve_tree_proof;
 use crate::utils::{get_generators, get_curve_tree_proof_from_curve_tree,
-    get_leaf_commitments, BRANCHING_FACTOR, BATCH_SIZE};
+    BRANCHING_FACTOR, BATCH_SIZE};
 
 pub const J_GENERATOR_LABEL: &[u8] = b"auditor-J";
 pub const H_GENERATOR_LABEL: &[u8] = b"auditor-H";
@@ -102,11 +102,11 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
         G: &Affine<P0>,
         J: &Affine<P0>,
         commitment_list: Vec<Affine<P0>>,
+        comms_indices: Vec<i32>,
         //witness section:
         privkeys: Vec<P0::ScalarField>,
         values: Vec<u64>,
         // proof parameters:
-        keyset: &str,
         curve_tree: &CurveTree<BRANCHING_FACTOR, BATCH_SIZE, P0, P1>,
         sr_params: &SelRerandParameters<P0, P1>,
         user_string: &str
@@ -117,8 +117,6 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
         let mut  curvetree_paths: Vec<SelectAndRerandomizePath<BRANCHING_FACTOR, P0, P1>> = Vec::new();
         let mut blindings: Vec<P0::ScalarField> = Vec::new();
 
-        let leaf_commitments = get_leaf_commitments::<F, P0>(
-            &(keyset.to_string() + ".p"));
         let mut root: Option<Affine<P0>> = None;
         for i in 0..commitment_list.len() {
             let (p0proof,
@@ -131,8 +129,8 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
                     F,
                     P0,
                     P1>(
+                        comms_indices[i],
                     curve_tree,
-                    &leaf_commitments, commitment_list[i],
                 sr_params) {
                     Err(e) => {return Err(e.into());},
                         Ok((p0proof,
