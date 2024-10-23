@@ -390,8 +390,10 @@ Affine<P0>, Affine<P0>), Box<dyn std::error::Error>> {
         &sr_params,
         &mut rng,
     );
-
-    let root: Affine<P0> = *path_commitments.clone().even_commitments.first().unwrap();
+    let mut newpath = path_commitments.clone();
+    curve_tree.select_and_rerandomize_verification_commitments(
+        &mut newpath);
+    let root: Affine<P0> = *newpath.even_commitments.first().unwrap();
     let p0_proof = p0_prover
         .prove(&sr_params.even_parameters.bp_gens)
         .unwrap();
