@@ -7,7 +7,7 @@ use crate::key_processing::create_fake_privkeys_values_files;
 use crate::rpcclient;
 //use crate::rpcserver;
 use crate::config::{AutctConfig, get_params_from_config_string};
-use crate::utils::write_file_string;
+use crate::serialization::{write_file_string, read_file_string};
 use std::io::Write;
 use std::error::Error;
 use base64::prelude::*;
@@ -42,7 +42,7 @@ pub async fn create_test_data(autctcfg: AutctConfig) -> Result<(), Box<dyn Error
 pub async fn request_encrypt_key(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>  {
     let password = rpassword::prompt_password("Enter a password to encrypt the private key: ").unwrap();
     let privkey_file_str = autctcfg.privkey_file_str.clone().unwrap();
-    let plaintext_priv_wif = crate::utils::read_file_string(&privkey_file_str)?;
+    let plaintext_priv_wif = read_file_string(&privkey_file_str)?;
     let mut buf: Vec<u8> = Vec::new();
     write!(&mut buf, "{}", plaintext_priv_wif)?;
     let encrypted_data = encrypt(&buf, &password.as_bytes())?;

@@ -11,7 +11,8 @@ use ark_ec::short_weierstrass::{Affine, SWCurveConfig};
 
 use crate::config::AutctConfig;
 use crate::utils::{APP_DOMAIN_LABEL,
-    get_generators, write_file_string2};
+    get_generators};
+use crate::serialization::write_file_string2;
 
 pub const KEYIMAGE_FILE_EXTENSION: &[u8] = b".aki";
 

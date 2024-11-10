@@ -4,8 +4,8 @@ use ark_serialize::{ CanonicalDeserialize,
     Compress, Validate};
 use crate::rpc::{RPCAuditProofVerifier, RPCAuditProver,
     RPCCreateKeys, RPCProverVerifierArgs, RPCEcho};
-use crate::utils::{get_curve_tree,
-    convert_keys, APP_DOMAIN_LABEL};
+use crate::utils::{get_curve_tree, APP_DOMAIN_LABEL};
+use crate::serialization::convert_keys;
 use tokio::{task, net::TcpListener};
 use std::fs;
 use std::error::Error;

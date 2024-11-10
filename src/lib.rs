@@ -13,6 +13,7 @@ pub mod generalschnorr;
 pub mod key_processing;
 pub mod sumrangeproof;
 pub mod auditor;
+pub mod serialization;
 extern crate rand;
 extern crate alloc;
 extern crate ark_secp256k1;
@@ -55,8 +56,8 @@ pub mod rpc {
 
     use super::*;
     use std::{sync::{Arc, Mutex}, u64};
-    use ark_ff::BigInteger256;
     use relations::curve_tree::{CurveTree, SelRerandParameters};
+    use serialization::privkey_val_to_taproot_ark_ec;
 
     pub struct RPCProverVerifierArgs {
                 pub keyset_file_locs: Vec<String>,
@@ -138,7 +139,8 @@ impl Clone for RPCProverVerifierArgs {
                     // failing is a logic error):
                     let encrypted_data = encrypt(&buf, &args.encryption_password.as_bytes())
                     .expect("Failed to encrypt");
-                    write_file_string(&resp.privkey_file_loc.clone().unwrap(), encrypted_data);
+                    serialization::write_file_string(&resp.privkey_file_loc.clone().unwrap(),
+                    encrypted_data);
                     let secp = Secp256k1::new();
                     // this is the standard way to generate plain-vanilla taproot addresses:
                     // it is not "raw" (rawtr in descriptors) but it applies a merkle root of
@@ -215,61 +217,20 @@ impl Clone for RPCProverVerifierArgs {
                     type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
                     let mut privkeys: Vec<F> = Vec::new();
                     for i in 0..privkeys_wif.len() {
-                        let privkeyres1 =
-                        PrivateKey::from_wif(
-                            &privkeys_wif[i]);
-                        let privkey: PrivateKey = privkeyres1.unwrap();
-                        let untweaked_key_pair: UntweakedKeypair =
-                        UntweakedKeypair::from_secret_key(
-                            &secp, &privkey.inner);
-                        let tweaked_key_pair =
-                        untweaked_key_pair.tap_tweak(&secp, None);
-                        let privkey_bytes = tweaked_key_pair.
-                        to_inner().secret_bytes();
-                        let privhex = hex::encode(&privkey_bytes);
-    
-                        let mut x =
-                        decode_hex_le_to_F::<F>(&privhex);
-                        let mut P = G.mul(x).into_affine();
-                        // Since we are using BIP340 pubkeys on chain, we must use the correct
-                        // sign of x, such that the parity of x*G is even.
-                        // This is because, the public servers/verifiers have no choice
-                        // but to assume that the public representation (a BIP340 key)
-                        // corresponds to that parity, when they do the P +vG arithmetic.
-                        // TODO refactor this, it is reused in key_processing.rs:
-                        let yval: SecpBase = *P.y().unwrap();
-                        let yvalint: BigInteger256 = BigInteger256::from(yval);
-                        if yvalint.0[0] % 2 == 1 {
-                            x = -x;
-                            P = -P;}
+                        let pvres = privkey_val_to_taproot_ark_ec(
+                            &privkeys_wif[i], values[i], J, &secp);
+                        if pvres.is_err(){
+                            resp.accepted = -1;
+                            return Ok(resp);
+                        }
+                        let (x, comm) = pvres.unwrap();
                         privkeys.push(x);
-                        let v = F::from(values[i]);
-                        // C = xG + vJ (note *un*blinded)
-                        comms.push(P.add(J.mul(v)).into_affine());
+                        comms.push(comm);
                     }
                     // 1b. Find the indices of each of the above commitments
                     // in the pks file.
-                    /*
-                    let filestr:String = read_file_string(&keyset)
-                    .expect("Failed to read pubkey file");
-                    let hex_keys_vec = filestr.split_whitespace().collect::<Vec<_>>();
-                    // replace with convert_pt_to_hex_bip340
-                    let hex_bip340_pubkey = match convert_pt_to_hex_bip340(P) {
-                        Err(_) => {resp.accepted = -8;
-                            return Ok(resp);}
-                            Ok(hp) => hp
-                    };
-                    let key_index =
-                    match get_key_index_from_hex_leaves(
-                        &hex_keys_vec, hex_bip340_pubkey){
-                            Err(_) => {resp.accepted = -8;
-                                return Ok(resp);}
-                                Ok(ki) =>
-                                ki
-                        };
-                     */
                     let mut comms_indices: Vec<i32> = Vec::new();
-                    let filestr = read_file_string(&pva.keyset_file_locs[0])
+                    let filestr = serialization::read_file_string(&pva.keyset_file_locs[0])
                     .expect("Failed to read pubkey file");
                     let hex_keys_vec = filestr.split_whitespace().collect::<Vec<_>>();
                     // for each of the points in comms, search for its serialization
@@ -324,7 +285,6 @@ impl Clone for RPCProverVerifierArgs {
                         resp.accepted = -2;
                         return Ok(resp);
                     }
-                    //let verifres = auditproof
                     // 5. Update the response object and return the serialization of the proof.
                     let mut buf = Vec::with_capacity(prf.serialized_size(Compress::Yes));
                     if prf.serialize_compressed(&mut buf).is_err(){
@@ -467,7 +427,12 @@ impl Clone for RPCProverVerifierArgs {
                     let privkey_bytes = tweaked_key_pair.to_inner().secret_bytes();
                     let privhex = hex::encode(&privkey_bytes);
 
-                    let x = decode_hex_le_to_F::<F>(&privhex);
+                    let xres = serialization::decode_hex_le_to_F::<F>(&privhex);
+                    if xres.is_err(){
+                        resp.accepted = -7;
+                        return Ok(resp);
+                    }
+                    let x = xres.unwrap();
                     let G = SecpConfig::GENERATOR;
                     let P = G.mul(x).into_affine();
                     print_affine_compressed(P, "request pubkey");
@@ -478,11 +443,11 @@ impl Clone for RPCProverVerifierArgs {
                     // TODO the correct solution here is to make all serializations
                     // read at this level be ark- type and in binary and relegate
                     // both hex and BIP340 formats to external modules.
-                    let filestr:String = read_file_string(&keyset)
+                    let filestr:String = serialization::read_file_string(&keyset)
                     .expect("Failed to read pubkey file");
                     let hex_keys_vec = filestr.split_whitespace().collect::<Vec<_>>();
-                    // replace with convert_pt_to_hex_bip340
-                    let hex_bip340_pubkey = match convert_pt_to_hex_bip340(P) {
+                    let hex_bip340_pubkey = match
+                    serialization::convert_pt_to_hex_bip340(P) {
                         Err(_) => {resp.accepted = -8;
                             return Ok(resp);}
                             Ok(hp) => hp

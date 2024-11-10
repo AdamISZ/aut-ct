@@ -1,33 +1,25 @@
 #![allow(non_snake_case)]
 
-/// Processing bitcoin private keys, public keys
-/// Two main tasks are addressed by this module:
-/// 1. creating sets of privkey test values and the
-/// corresponding pubkey files.
-/// 2. handling conversions between WIF, hex BIP340
-/// and ark_ec serialization formats.
+/// Processing bitcoin private key files
 
 extern crate bulletproofs;
 extern crate merlin;
 extern crate rand;
 
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::AffineRepr;
 use ark_serialize::CanonicalSerialize;
 use bitcoin::secp256k1::All;
 use rand::Rng;
 use std::iter::zip;
 
 use std::error::Error;
-use std::ops::{Mul, Add};
 use std::io::Write;
 use ark_ec::short_weierstrass::Affine;
 use ark_secp256k1::Config as SecpConfig;
-use ark_secp256k1::Fq as SecpBase;
-use bitcoin::key::{Secp256k1, TapTweak, UntweakedKeypair};
-use bitcoin::{PrivateKey, XOnlyPublicKey};
+use bitcoin::key::Secp256k1;
+use bitcoin::PrivateKey;
 use crate::auditor::get_audit_generators;
-use crate::utils::*;
-use ark_ff::BigInteger256;
+use crate::serialization::{self, *};
 
 
 type F = <ark_secp256k1::Affine as AffineRepr>::ScalarField;
@@ -52,7 +44,7 @@ pub fn create_fake_privkeys_values_files(num_privs: u64,
             &buf, bitcoin::Network::Signet).unwrap();
         let privhex = hex::encode(&privk2.to_bytes());
     
-        let x = decode_hex_le_to_F::<F>(&privhex);
+        let x = decode_hex_le_to_F::<F>(&privhex)?;
         privkey_wifs.push(get_wif_from_field_elem(x)?);
     }
 
@@ -121,29 +113,6 @@ output_filename: &str) -> Result<(), Box<dyn Error>> {
     write_file_string(output_filename, buf);
     Ok(())  
 }
-/// Currently not in use:
-/// A functoin to write the commitments to a keyset
-/// file, but in BIP340 format:
-pub fn write_keyset_file_from_commitments_UNUSED(comms: Vec<Affine<SecpConfig>>,
-    output_filename: &str) -> Result<(), Box<dyn Error>> {
-    let mut buf: Vec<u8> = Vec::new();
-    let mut commslist: Vec<String> = Vec::new();
-    for comm in comms {
-        let mut buf2: Vec<u8> = Vec::new();
-        comm.serialize_with_mode(&mut buf2,
-            ark_serialize::Compress::Yes)?;
-        // ignore the final byte which is the sign byte in ark:
-        let buf3  = &mut buf2[0..32];
-        // ark uses LE, so stop that nonsense:
-        buf3.reverse();
-        let bin_bip340_pubkey = XOnlyPublicKey::from_slice(&buf3)?.serialize();
-        let hex_bip340_pubkey = hex::encode(bin_bip340_pubkey);
-        commslist.push(hex_bip340_pubkey);  
-    }
-    write!(&mut buf, "{}", commslist.join(" "))?;
-    write_file_string(output_filename, buf);
-    Ok(())
-}
 
 pub fn get_commitments_from_wif_and_sats_file(privkeys_values_file_loc: &str,
 secp: &Secp256k1::<All>) -> Result<
@@ -158,58 +127,13 @@ pub fn get_commitments_from_wif_and_sats(privkeys_wif: Vec<String>,
     values: Vec<u64>, secp: &Secp256k1<All>)
 -> Result<Vec<Affine<SecpConfig>>, Box<dyn Error>> {
     let (_, J) = get_audit_generators();
-    //Form list of commitments as xG + vJ
     let mut comms: Vec<Affine<SecpConfig>> = Vec::new();
     for i in 0..privkeys_wif.len() {
-        let privk2: PrivateKey = PrivateKey::from_wif(
-            &privkeys_wif[i])?;
-        let untweaked_key_pair: UntweakedKeypair =
-        UntweakedKeypair::from_secret_key(
-            &secp, &privk2.inner);
-        let tweaked_key_pair = untweaked_key_pair
-        .tap_tweak(&secp, None);
-        let privkey_bytes = tweaked_key_pair
-        .to_inner().secret_bytes();
-        let privhex = hex::encode(&privkey_bytes);
-         let x: F = decode_hex_le_to_F(&privhex);
-        let v = F::from(values[i]);
-        let P: Affine<SecpConfig>;
-        (_, P) = get_pub_and_flip_if_necessary(x)?;
-        // C = xG + vJ (note *un*blinded)
-        comms.push(P.add(J.mul(v)).into_affine());
+        let (_, comm) = serialization::privkey_val_to_taproot_ark_ec(
+            &privkeys_wif[i], values[i], J, secp)?;
+        comms.push(comm);
     }
     Ok(comms)
-}
-
-pub fn get_wif_from_field_elem(x: F) -> Result<String, Box<dyn Error>>{
-    let mut buf: Vec<u8> = Vec::new();
-    x.serialize_compressed(&mut buf)?;
-    buf.reverse();
-    let privk2: PrivateKey = PrivateKey::from_slice(&buf, bitcoin::Network::Signet).unwrap();
-    return Ok(privk2.to_wif());
-}
-
-pub fn get_field_elem_from_wif(wif: &String) -> Result<F, Box<dyn Error>> {
-    let privk = PrivateKey::from_wif(wif)?;
-    let privkey_bytes = privk.to_bytes();
-    let privhex = hex::encode(&privkey_bytes);
-    Ok(decode_hex_le_to_F::<F>(&privhex))
-}
-
-/// Since we are using BIP340 pubkeys on chain, we must use the correct
-/// sign of x, such that the parity of x*G is even.
-/// This is because, the public servers/verifiers have no choice
-/// but to assume that the public representation (a BIP340 key)
-/// corresponds to that parity, when they do the P +vG arithmetic.
-pub fn get_pub_and_flip_if_necessary(mut x: F) -> Result<(F, Affine<SecpConfig>), Box<dyn Error>> {
-    let (G, _) = get_audit_generators();
-    let mut P = G.mul(x).into_affine();
-    let yval: SecpBase = *P.y().unwrap();
-    let yvalint: BigInteger256 = BigInteger256::from(yval);
-    if yvalint.0[0] % 2 == 1 {
-        x = -x;
-        P = -P;}
-    Ok((x, P))
 }
 
 pub fn get_privkeys_and_values(fileloc: &str) -> Result<(Vec<String>, Vec<u64>), Box<dyn Error>>{
