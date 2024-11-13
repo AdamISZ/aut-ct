@@ -22,11 +22,11 @@ Anonymous usage tokens from curve trees
 
 * If you are time constrained and just want to see it run, or check the environment is set up correctly, then: go to [Installation](#installing) and then [Worked Example](#worked-example).
 
-Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from a very large anonmity sets (10s of thousands up to millions) with a verification time which is very short so that it can be used practically in real systems. In practice this code already allows such verifications **in about 40-60ms on commodity hardware for up to 2.5M pubkeys (at least)**.
+Goal: Be able to use a privacy-preserving proof of ownership of *a* public key in a set of public keys, as a kind of token with scarcity. In particular, it should be possible to create such a token from very large anonmity sets (10s of thousands up to millions) with a verification time which is very short so that it can be used practically in real systems. In practice this code already allows such verifications **in about 40-60ms on commodity hardware for up to 2.5M pubkeys (at least)**.
 
 More specifically, we imagine these public keys to be those of Bitcoin utxos (or perhaps just txos).
 
-The basis of this is [Curve Trees](https://eprint.iacr.org/2022/756), implemented [here](https://github.com/simonkamp/curve-trees/tree/main). That construction allows one to prove set membership in zero knowledge, with pretty good computation and verification complexity, by essentially using an algebraic version of a Merkle tree, and using bulletproofs to get a ZKP of the validity of the "Merkle" proof.
+The basis of this is [Curve Trees](https://eprint.iacr.org/2022/756), see also [here](https://eprint.iacr.org/2024/1647), implemented [here](https://github.com/simonkamp/curve-trees/tree/main). That construction allows one to prove set membership in zero knowledge, with pretty good computation and verification complexity, by essentially using an algebraic version of a Merkle tree, and using bulletproofs to get a ZKP of the validity of the "Merkle" proof.
 
 Specifically, it can be made to work for Bitcoin public keys because of the existence of the 2-cycle of curves secp256k1 and secq256k1; we need such a 2-cycle to implement a Curve Tree construct (technically it works with a bigger cycle but the 2-cycle is optimal, since multiple bulletproofs over the same base curve can be aggregated).
 
@@ -78,7 +78,7 @@ Build the project with `cargo build --release` (without release flag, the debug 
 
 Start with `target/release/autct --help` for the summary of the syntax. Note that two flags are required (TODO: they should be arguments), namely `-M` for the mode/method and `-k` for the keyset.
 
-Taking each of the four `mode`s in turn:
+Taking each of the four main `mode`s in turn:
 
 "serve":
 
@@ -89,9 +89,9 @@ my-context:testdata/autct-203015-500000-0-2-1024.aks,my-other-context:some-other
 
 The application's architecture is based around the idea of a (potentially always-on) daemon acting as an RPC server, for clients to request actions from. This allows easier usage by external applications written in different environments/languages etc., and means that such clients do **not** need to have implemented any of the custom cryptographic operations.
 
-Currently the application supports three specific distinct RPC requests, represented by the modes `prove`, `verify` and `newkeys`.
+Currently the application (ignoring the audit function, which is separately explained [here](./auditor-docs/)), supports three specific distinct RPC requests, represented by the modes `prove`, `verify` and `newkeys`.
 
-The RPC server will often takes some considerable time to start up (1-2 minutes e.g.) (loading precomputation tables and constructing the Curve Tree), and then serves on port as specified with `-p` at host specified with `-H` (default 127.0.0.1:23333).
+The RPC server will take some time to start up (30 seconds is typical - loading precomputation tables and constructing the Curve Tree), and then serves on port as specified with `-p` at host specified with `-H` (default 127.0.0.1:23333).
 
 Additionally, a server can serve the proving and verification function for multiple different contexts simultaneously, by extending the comma-separated list as shown above. Each item in the list must have a different context label, and the keyset files for each can be the same or different, as desired.
 
@@ -108,7 +108,7 @@ If you need a new taproot address and its corresponding private key, this conven
 ```
 target/release/autct -M prove --keysets \
 my-context:testdata/autct-203015-500000-0-2-1024.aks \
--i privkeyfile
+-i privkey-file
 ```
 
 As per `newkeys` above, the private key is read in as WIF format from the file specified with `-i` (the default is a local directory file called `privkey`).
@@ -119,7 +119,7 @@ The file `autct-203015-500000-0-2-1024.aks`, or whatever else is specified (see 
 
 The output of the proving algorithm is sent to the file specified by `-P`, which should usually be around 2-3kB. The program will look for the pubkey corresponding to the given private key, in the list of pubkeys in the pubkey file, in order to identify the correct index to use in the proof.
 
-Note that in contrast to verification as specified below, proving can take a non trivial time (15 seconds for large keysets is not untypical).
+**Proving time**: 1 to 2 seconds is typical and doesn't vary much with the size of the set.
 
 "verify":
 
