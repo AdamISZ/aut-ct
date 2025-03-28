@@ -180,7 +180,7 @@ target/release/autct -M prove --keysets my-context:testdata/autct-203015-500000-
 -n signet -i privkey.enc -P default-proof-file
 ```
 
-This will likely take around 15 seconds, at the end you should see `Proof generated successfully` and the file `default-proof-file` will contain it.
+This will likely take around 2 seconds, at the end you should see `Proof generated successfully` and the file `default-proof-file` will contain it.
 
 If you check the other terminal you will see some debug output as the proof was created.
 
