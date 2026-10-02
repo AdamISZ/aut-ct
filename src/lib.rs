@@ -43,6 +43,7 @@ use bitcoin::key::{Secp256k1, TapTweak, UntweakedKeypair};
 
 use alloc::vec::Vec;
 use ark_ec::{AffineRepr, short_weierstrass::SWCurveConfig, CurveGroup};
+use ark_ff::{BigInteger, PrimeField};
 use ark_secp256k1::Fq as SecpBase;
 use std::ops::{Mul, Add};
 use bitcoin::{Address, PrivateKey, XOnlyPublicKey};
@@ -432,9 +433,14 @@ impl Clone for RPCProverVerifierArgs {
                         resp.accepted = -7;
                         return Ok(resp);
                     }
-                    let x = xres.unwrap();
+                    let mut x = xres.unwrap();
                     let G = SecpConfig::GENERATOR;
-                    let P = G.mul(x).into_affine();
+                    let mut P = G.mul(x).into_affine();
+                    // tree leaves are BIP340 keys with even y
+                    if P.y().unwrap().into_bigint().is_odd() {
+                        x = -x;
+                        P = -P;
+                    }
                     print_affine_compressed(P, "request pubkey");
                     let gctwptime = Instant::now();
                     // The following section exists to do the key index
