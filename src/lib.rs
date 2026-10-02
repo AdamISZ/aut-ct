@@ -822,8 +822,6 @@ impl Clone for RPCProverVerifierArgs {
                 resp.key_image = Some(str_E);
                 return Ok(resp);
             }
-            // if it isn't, then it counts as used now:
-            self.prover_verifier_args.ks[idx].lock().unwrap().add_key(E).expect("Failed to add keyimage to store.");
             // Next, we deserialize and validate the curve tree proof.
             // TODO replace these `expect()` calls; we need to return
             // an 'invalid proof format' error if they send us junk, not crash!
@@ -861,6 +859,14 @@ impl Clone for RPCProverVerifierArgs {
                 Ok(resp)
             }
             else {
+                // recheck under lock in case a concurrent request added E
+                let mut ks = self.prover_verifier_args.ks[idx].lock().unwrap();
+                if ks.is_key_in_store(E) {
+                    resp.accepted = -3;
+                    resp.key_image = Some(str_E);
+                    return Ok(resp);
+                }
+                ks.add_key(E).expect("Failed to add keyimage to store.");
                 // All checks successful, return resource
                 println!("Verifying curve tree passed and it matched the key image. Here is the key image: {}",
                 str_E);
