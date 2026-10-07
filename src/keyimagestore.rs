@@ -59,12 +59,13 @@ impl<C: AffineRepr> KeyImageStore<C> {
         self.full_file_loc = Some(PathBuf::from(str1.to_owned() + &String::from_utf8(KEYIMAGE_FILE_EXTENSION.to_vec()).unwrap()));
     }
 
+    /// Key images are treated as x-only (as for BIP340 keys), so
+    /// E and -E count as the same image. The prover can choose the
+    /// sign of E by negating both x and r, so comparing full points
+    /// would allow two claims per key.
     pub fn is_key_in_store
     (&self, key_to_check: C) -> bool {
-        match self.keys.iter().position(|&x| x  == key_to_check) {
-            None => false,
-            Some(_key) => true
-        }
+        self.keys.iter().any(|k| k.x() == key_to_check.x())
     }
     pub fn add_key(&mut self, key_to_add: C) -> Result<(), Error> {
         self.keys.push(key_to_add);
@@ -275,6 +276,10 @@ mod tests {
         for k in y {
             assert_eq!(new_ks.is_key_in_store(k), false);
         }
+        // the negation of a stored key image counts as the same image
+        for i in rand_sample_indices {
+            assert_eq!(new_ks.is_key_in_store(-ks.keys[i]), true)
+        };
     }
 }
 
