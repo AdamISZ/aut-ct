@@ -857,7 +857,9 @@ impl Clone for RPCProverVerifierArgs {
                     return Ok(resp)},
             };
             println!("Elapsed time for verify_curve_tree_proof: {:.2?}", timer1.elapsed());
-            // TODO check if any reuse is possible with sign flip:
+            // A proof for -D is a proof with (-x, -r), which gives the key
+            // image -E; this is not a reuse because the key image store
+            // compares x-coordinates only.
             if claimed_D_result != D && claimed_D_result != -D {
                 println!("Curve tree proof did not match PedDLEQ proof");
                 resp.accepted = -1;
