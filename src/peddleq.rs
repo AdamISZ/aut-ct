@@ -214,16 +214,6 @@ impl<C: AffineRepr> PedDleqProof<C> {
         }
         Ok(())
     }
-    /// Returns the size in bytes required to serialize the ped-dleq proof
-    pub fn serialized_size(&self, compress: Compress) -> usize {
-        // proof consists of 4 objects, two scalars sigma1, sigma2 and two points R1, R2.
-        // Note that both prover and verifier own P and D (blinded claimed tree entry)
-        // as well as G, H, J generators and E(the key image).
-        let scalars_size = self.sigma1.serialized_size(compress) * 2;
-        // size of the 2 points
-        let points_size = self.R1.serialized_size(compress) * 2;
-        scalars_size + points_size
-    }
 }
 
 impl<C: AffineRepr> Valid for PedDleqProof<C> {
@@ -233,9 +223,12 @@ impl<C: AffineRepr> Valid for PedDleqProof<C> {
 }
 impl<C: AffineRepr> CanonicalSerialize for PedDleqProof<C> {
     /// Returns the size in bytes required to serialize the ped-dleq proof
-    /// TODO: Why is this copy-pasted from the struct function?
     fn serialized_size(&self, mode: Compress) -> usize {
+        // proof consists of 4 objects, two scalars sigma1, sigma2 and two points R1, R2.
+        // Note that both prover and verifier own P and D (blinded claimed tree entry)
+        // as well as G, H, J generators and E(the key image).
         let scalars_size = self.sigma1.serialized_size(mode) * 2;
+        // size of the 2 points
         let points_size = self.R1.serialized_size(mode) * 2;
         scalars_size + points_size
     }

@@ -227,15 +227,6 @@ impl<C: AffineRepr> GenSchnorrProof<C> {
         }
         Ok(())
     }
-    /// Returns the size in bytes required to serialize the proof
-    pub fn serialized_size(&self, compress: Compress) -> usize {
-        let scalars_size = self.sigmavec.serialized_size(compress);
-        let points_size = self.Rvec.serialized_size(compress);
-        let RIsize = self.RI.serialized_size(compress);
-        let Isize = self.I.serialized_size(compress);
-        let keyimagebasesize = self.keyimagebase.serialized_size(compress);
-        scalars_size + points_size + RIsize + Isize + keyimagebasesize
-    }
 }
 
 impl<C: AffineRepr> Valid for GenSchnorrProof<C> {
@@ -245,7 +236,6 @@ impl<C: AffineRepr> Valid for GenSchnorrProof<C> {
 }
 impl<C: AffineRepr> CanonicalSerialize for GenSchnorrProof<C> {
     /// Returns the size in bytes required to serialize the proof
-    /// TODO: Why is this copy-pasted from the struct function?
     fn serialized_size(&self, compress: Compress) -> usize {
         let scalars_size = self.sigmavec.serialized_size(compress);
         let points_size = self.Rvec.serialized_size(compress);
