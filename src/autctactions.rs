@@ -101,6 +101,7 @@ pub async fn request_verify(autctcfg: AutctConfig) -> Result<(), Box<dyn Error>>
                 -5 => println!("Invalid encoding of proof, should be base64."),
                 -6 => println!("Curve point deserialization failure in proof."),
                 -7 => println!("PedDLEQ proof deserialization failed."),
+                -8 => println!("Curve tree proof deserialization failed."),
                 _ => println!("Unrecognized error code from server?"),
             }
         },

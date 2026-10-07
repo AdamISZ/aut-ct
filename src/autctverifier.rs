@@ -19,12 +19,12 @@ use ark_ec::short_weierstrass::Affine;
 
 use std::time::Instant;
 
-// This function thows assertion errors if the given
+// This function returns an error if the given
 // set (curve_tree, p0proof, p1proof, path_commitments, root)
 // do not validate ('curve_tree' is generated locally by the
 // verifier from the keyset, and that is compared against the other
 // items, which are all deserialized from the proof string given
-// by the Prover)
+// by the Prover). It must not panic on any of the Prover's inputs.
 pub fn verify_curve_tree_proof<
 const BRANCHING_FACTOR: usize,
 const BATCH_SIZE: usize,
@@ -39,6 +39,17 @@ const BATCH_SIZE: usize,
     p1proof: &R1CSProof<Affine<P1>>,
     root: Affine<P0>,
 ) -> Result<Affine<P0>, R1CSError> {
+    // the curve tree gadget asserts on the path lengths, so a path
+    // that doesn't fit our tree has to be rejected before calling it:
+    let even_len = path_commitments.even_commitments.len();
+    let odd_len = path_commitments.odd_commitments.len();
+    let path_fits_tree = match curve_tree {
+        CurveTree::Even(_) => even_len + 1 == odd_len,
+        CurveTree::Odd(_) => even_len == odd_len,
+    } && even_len + odd_len + 1 == curve_tree.height();
+    if !path_fits_tree {
+        return Err(R1CSError::FormatError);
+    }
     let path_commitments2:
     &mut SelectAndRerandomizePath<BRANCHING_FACTOR, P0, P1>
     = &mut path_commitments.clone();
@@ -85,7 +96,9 @@ const BATCH_SIZE: usize,
 
     // check also that the path's first node matches the root of the tree that we
     // constructed from the keyset
-    assert_eq!(root, verifier_root);
+    if root != verifier_root {
+        return Err(R1CSError::VerificationError);
+    }
 
     // return the last commitment so that it can be checked
     // that it matches the D value from the Ped-DLEQ:
