@@ -281,39 +281,6 @@ ScalarField = P0::BaseField> + Copy,> AuditProof<F, P0, P1> {
         println!("Audit proof verification successful");
         Ok(())
     }
-    /// Returns the size in bytes required to serialize the entire audit proof
-    pub fn serialized_size(&self, compress: Compress) -> usize {
-        // Three main components are:
-        // 1 list of all curve tree membership proofs
-        // 2 list of representation proofs
-        // 3 list of sum-range proofs.
-        // Note that there is overlap: in particular, the blinded
-        // commitment used as public input to the curve tree proof,
-        // is the same blinded commitment used in the representation
-        // proof (and there are m of them for m utxos), see "Qcomms"
-        // and "blinded_commitments"
-        let blinded_commitment_size =
-        self.blinded_commitment_list.serialized_size(compress);
-        let p0proofs_size =
-        self.curvetree_p0_proofs.serialized_size(compress);
-        let p1proofs_size =
-        self.curvetree_p1_proofs.serialized_size(compress);
-        let paths_size =
-        self.curvetree_paths.serialized_size(compress);
-        let repr_proofs_size =
-        self.representation_proofs.serialized_size(compress);
-        // The sum-range proof is an R1CS Proof, a single commitment
-        // (for the sum) and the re-blinded "Q-comms" commitments
-        let sum_range_proof_size =
-        self.sum_range_proof.serialized_size(compress) + 33;
-        let Q_comms_size = self.Q_comms.serialized_size(compress);
-        let k_size = self.k.serialized_size(compress);
-        let n_size = self.n.serialized_size(compress);
-        // add one more 33 for root and one for blinding base
-        blinded_commitment_size + p0proofs_size + p1proofs_size
-        + paths_size + 33*2 + sum_range_proof_size + Q_comms_size
-        + repr_proofs_size + k_size + n_size
-    }
 }
 
 impl<F: PrimeField,
@@ -328,9 +295,17 @@ impl<F: PrimeField,
 P0: SWCurveConfig<BaseField = F> + Copy,
 P1: SWCurveConfig<BaseField = P0::ScalarField,
 ScalarField = P0::BaseField> + Copy,> CanonicalSerialize for AuditProof<F, P0, P1> {
-    /// Returns the size in bytes required to serialize the ped-dleq proof
-    /// TODO: Why is this copy-pasted from the struct function?
+    /// Returns the size in bytes required to serialize the entire audit proof
     fn serialized_size(&self, compress: Compress) -> usize {
+        // Three main components are:
+        // 1 list of all curve tree membership proofs
+        // 2 list of representation proofs
+        // 3 list of sum-range proofs.
+        // Note that there is overlap: in particular, the blinded
+        // commitment used as public input to the curve tree proof,
+        // is the same blinded commitment used in the representation
+        // proof (and there are m of them for m utxos), see "Qcomms"
+        // and "blinded_commitments"
         let blinded_commitment_size =
         self.blinded_commitment_list.serialized_size(compress);
         let p0proofs_size =

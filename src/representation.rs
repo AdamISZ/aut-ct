@@ -205,16 +205,6 @@ impl<C: AffineRepr> Repr3Proof<C> {
         }
         Ok(())
     }
-    /// Returns the size in bytes required to serialize the ped-dleq proof
-    pub fn serialized_size(&self, compress: Compress) -> usize {
-        // proof consists of 4 objects, 3 scalars sigma1, sigma2, sigma3 and one point R.
-        // Note that both prover and verifier own P and D (blinded claimed tree entry)
-        // as well as G, H, J generators.
-        let scalars_size = self.sigma1.serialized_size(compress) * 3;
-        // size of the 2 points
-        let points_size = self.R.serialized_size(compress);
-        scalars_size + points_size
-    }
 }
 
 impl<C: AffineRepr> Valid for Repr3Proof<C> {
@@ -223,9 +213,11 @@ impl<C: AffineRepr> Valid for Repr3Proof<C> {
     }
 }
 impl<C: AffineRepr> CanonicalSerialize for Repr3Proof<C> {
-    /// Returns the size in bytes required to serialize the ped-dleq proof
-    /// TODO: Why is this copy-pasted from the struct function?
+    /// Returns the size in bytes required to serialize the proof
     fn serialized_size(&self, mode: Compress) -> usize {
+        // proof consists of 4 objects, 3 scalars sigma1, sigma2, sigma3 and one point R.
+        // Note that both prover and verifier own P and D (blinded claimed tree entry)
+        // as well as G, H, J generators.
         let scalars_size = self.sigma1.serialized_size(mode) * 3;
         let points_size = self.R.serialized_size(mode);
         scalars_size + points_size
