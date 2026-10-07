@@ -31,7 +31,9 @@ blake2 = "0.10"
 rayon = {version = "1.5.3", optional = true}
 hex = {version ="0.4.3", features = ["serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
-toy-rpc = { version = "0.8.1", default-features = false, features = ["serde_json", "tokio_runtime", "ws_tokio", "server", "client"] }
+# fork of toy-rpc 0.8.6 whose websocket accept loop doesn't stop or block
+# on a single bad connection; see AdamISZ/toy-rpc branch autct-0.8.6-accept-fix
+toy-rpc = { git = "https://github.com/AdamISZ/toy-rpc", rev = "0ef221a3f8b9b76934b66482b5ccafb06288bc32", default-features = false, features = ["serde_json", "tokio_runtime", "ws_tokio", "server", "client"] }
 eframe = "0.28.1"
 rfd = "0.12"
 serde = { version = "1.0", features = ["derive"] }
