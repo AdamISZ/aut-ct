@@ -829,21 +829,47 @@ impl Clone for RPCProverVerifierArgs {
                 return Ok(resp);
             }
             // Next, we deserialize and validate the curve tree proof.
-            // TODO replace these `expect()` calls; we need to return
-            // an 'invalid proof format' error if they send us junk, not crash!
-            let p0proof = 
+            let p0proof = match
             R1CSProof::<Affine<SecpConfig>>::deserialize_with_mode(
-                &mut cursor, Compress::Yes, Validate::Yes).expect("Failed p0proof deserialize");
-            let p1proof = 
+                &mut cursor, Compress::Yes, Validate::Yes){
+                    Ok(x) => x,
+                    Err(_) => {
+                        resp.accepted = -8;
+                        resp.key_image = Some(str_E);
+                        return Ok(resp)
+                    }
+                };
+            let p1proof = match
             R1CSProof::<Affine<SecqConfig>>::deserialize_with_mode(
-                &mut cursor, Compress::Yes, Validate::Yes).expect("Failed p1proof deserialize");
-            let path = 
+                &mut cursor, Compress::Yes, Validate::Yes){
+                    Ok(x) => x,
+                    Err(_) => {
+                        resp.accepted = -8;
+                        resp.key_image = Some(str_E);
+                        return Ok(resp)
+                    }
+                };
+            let path = match
             SelectAndRerandomizePath::<BRANCHING_FACTOR, SecpConfig, SecqConfig>::deserialize_with_mode(
-                &mut cursor, Compress::Yes, Validate::Yes).expect("failed path deserialize");
+                &mut cursor, Compress::Yes, Validate::Yes){
+                    Ok(x) => x,
+                    Err(_) => {
+                        resp.accepted = -8;
+                        resp.key_image = Some(str_E);
+                        return Ok(resp)
+                    }
+                };
 
             // TODO this is part of the 'can we handle different root parity' problem:
-            let prover_root = Affine::<SecpConfig>::deserialize_compressed(
-                    &mut cursor).expect("Failed to deserialize root");
+            let prover_root = match Affine::<SecpConfig>::deserialize_compressed(
+                    &mut cursor){
+                    Ok(x) => x,
+                    Err(_) => {
+                        resp.accepted = -6;
+                        resp.key_image = Some(str_E);
+                        return Ok(resp)
+                    }
+                };
             let timer1 = Instant::now();
             let claimed_D = verify_curve_tree_proof(
                 path.clone(), &self.prover_verifier_args.sr_params, 
